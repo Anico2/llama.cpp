@@ -65,6 +65,8 @@ init_defaults() {
     PROMPT="No prompt provided."
     GPU="0"
     MODE="completion"
+    DEFAULT_CHUNK_SIZE=100
+    DEFAULT_ENCODING="cl100k_base"
 }
 
 # =========================
@@ -76,6 +78,9 @@ init_allowed_keys() {
         sys_prompt
         prompt
         mode
+        doc
+        chunk_size
+        encoding
     )
 }
 
@@ -125,6 +130,9 @@ parse_args() {
             sys_prompt=*) SYS_PROMPT="${arg#*=}" ;;
             prompt=*)     PROMPT="${arg#*=}" ;;
             mode=*)       MODE="${arg#*=}" ;;
+            doc=*)        DOC_PATH="${arg#*=}" ;;
+            chunk_size=*) CHUNK_SIZE="${arg#*=}" ;;
+            encoding=*)   ENCODING="${arg#*=}" ;;
             *)
                 [[ "$arg" =~ ^[0-9]+$ ]] && GPU="$arg"
                 ;;
@@ -161,18 +169,22 @@ select_binary() {
         completion) LLAMA_BIN="./build/bin/llama-completion" ;;
         cli)        LLAMA_BIN="./build/bin/llama-cli" ;;
         server)     LLAMA_BIN="./build/bin/llama-server" ;;
+        rag)        LLAMA_BIN="python3"
+                    RAG_SCRIPT="$SCRIPT_DIR/rag_llama_server.py";;
         *)
-            echo "Invalid mode: $MODE" >&2
-            echo "Valid modes: completion | cli | server" >&2
+            echo "❌ Invalid mode: $MODE" >&2
+            echo "Valid modes: completion | cli | server | rag" >&2
             exit 1
             ;;
     esac
+
 }
 
 # =========================
 # Build command
 # =========================
 build_cmd() {
+    # Base CMD (for completion, cli, server)
     CMD=(
         "$LLAMA_BIN"
         --model "$MODEL_PATH"
@@ -182,6 +194,7 @@ build_cmd() {
 
     [[ -n "$GPU" ]] && CMD+=(--main-gpu "$GPU" --split-mode none)
 
+    # Mode-specific args
     if [[ "$MODE" == "completion" || "$MODE" == "cli" ]]; then
         CMD+=(
             --prompt "$PROMPT"
@@ -194,8 +207,26 @@ build_cmd() {
             --reasoning-format deepseek
             --escape
         )
+    elif [[ "$MODE" == "rag" ]]; then
+        # Do NOT reset DOC_PATH or RAG_PROMPT here
+        # They are already set by parse_args()
+
+        # Defaults if not set
+        [[ -z "$CHUNK_SIZE" ]] && CHUNK_SIZE="$DEFAULT_CHUNK_SIZE"
+        [[ -z "$ENCODING" ]] && ENCODING="$DEFAULT_ENCODING"
+
+        # Construct CMD for Python RAG script
+        CMD=(
+            "$LLAMA_BIN"
+            "$RAG_SCRIPT"
+            "$DOC_PATH"
+            "$RAG_PROMPT"
+            --chunk-size "$CHUNK_SIZE"
+            --encoding "$ENCODING"
+        )
     fi
 }
+
 
 # =========================
 # Run
@@ -203,7 +234,7 @@ build_cmd() {
 run() {
     echo "Mode:  $MODE"
     echo "Model: $MODEL_FILE"
-    "${CMD[@]}" 2>/dev/null
+    "${CMD[@]}" #2>/dev/null
 }
 
 # =========================
