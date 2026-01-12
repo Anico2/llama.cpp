@@ -35,4 +35,18 @@ python3 ./run_with_openai_template.py \
 prompt="Give me the first sentences of the book '1984' by orwell" \
 model=Qwen2.5-3B-Q6_K-Instruct
 ```
+We can also run an embedding model at 8081 port, that can be queried for embedding
+documents in a vector store
 
+```
+/projects/run_models/llama.sh mode=server_plus_embed model=all embed_model=nomic_embed
+```
+
+## Memvid (work in progress)
+
+Install the cli (for python sdk use the venv)
+```
+curl -fsSL https://raw.githubusercontent.com/memvid/preflight-installer/main/install.sh | bash
+```
+
+memvid create db.mv2

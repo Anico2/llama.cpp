@@ -1,0 +1,1 @@
+Folder for creating memvid projects

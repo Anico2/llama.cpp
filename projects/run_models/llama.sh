@@ -44,17 +44,23 @@ init_env_vars() {
 init_defaults_params() {
     MODELS_DIR="$HOME/models"
     MODEL_KEY="mistral7binstrq4"
+    EMBED_MODEL_KEY="nomic-embed-text-v1.5.Q8_0"
     CONTEXT=4096
     NGL=99
     PROMPT="No prompt provided."
     SYS_PROMPT=""
     GPU="0"
     MODE="completion"
+
+    SERVER_PORT=8080
+    EMBED_PORT=8081
 }
+
 
 init_allowed_keys() {
     ALLOWED_KEYS=(
         model
+        embed_model
         sys_prompt
         prompt
         mode
@@ -69,6 +75,10 @@ mistral7binstr_q4:mistral-7b-instruct-v0.1.Q4_K_M.gguf
 mistral7binstr_q5:mistral-7b-instruct-v0.1.Q5_K_M.gguf
 qwen3b_q6:Qwen2.5-3B-Q6_K-Instruct.gguf
 smollm2_q6:SmolLM2-1.7B-Q6_K-Instruct.gguf
+
+# Embeddings
+nomic_embed:nomic-embed-text-v1.5.Q8_0.gguf
+bge_small:bge-small-en-v1.5.Q8_0.gguf
 EOF
 )
 }
@@ -96,6 +106,7 @@ parse_and_check_args() {
 
         case "$arg" in
             model=*)      MODEL_KEY="${arg#*=}" ;;
+            embed_model=*) EMBED_MODEL_KEY="${arg#*=}" ;;
             sys_prompt=*) SYS_PROMPT="${arg#*=}" ;;
             prompt=*)     PROMPT="${arg#*=}" ;;
             mode=*)       MODE="${arg#*=}" ;;
@@ -136,29 +147,49 @@ resolve_model() {
     fi
 }
 
+resolve_embed_model() {
+    EMBED_MODEL_FILE=$(awk -F: -v k="$EMBED_MODEL_KEY" '$1 == k {print $2}' <<< "$MODEL_MAP")
+
+    if [[ -z "$EMBED_MODEL_FILE" ]]; then
+        echo "Unknown embedding model key: $EMBED_MODEL_KEY" >&2
+        exit 1
+    fi
+
+    EMBED_MODEL_PATH="$MODELS_DIR/$EMBED_MODEL_FILE"
+
+    [[ -f "$EMBED_MODEL_PATH" ]] || {
+        echo "Embedding model not found: $EMBED_MODEL_PATH" >&2
+        exit 1
+    }
+}
 
 select_llama_binary() {
     case "$MODE" in
         completion) LLAMA_BIN="./build/bin/llama-completion" ;;
         cli)        LLAMA_BIN="./build/bin/llama-cli" ;;
-        server)     LLAMA_BIN="./build/bin/llama-server" ;;
+        server|server_plus_embed)
+                    LLAMA_BIN="./build/bin/llama-server" ;;
         *)
             echo "Invalid mode: $MODE" >&2
-            echo "Valid modes: completion | cli | server" >&2
             exit 1
             ;;
     esac
 }
 
+add_model_arg() {
+    local _cmd_ref=$1
+
+    if [[ "$USE_MODELS_DIR" == 1 ]]; then
+        eval "$_cmd_ref+=(--models_dir \"$MODELS_DIR\")"
+    else
+        eval "$_cmd_ref+=(--model \"$MODEL_PATH\")"
+    fi
+}
+
 build_cmd() {
     CMD=("$LLAMA_BIN")
 
-    # Decide which argument to pass
-    if [[ "$MODE" == "server" && "$USE_MODELS_DIR" == 1 ]]; then
-        CMD+=(--models_dir "$MODELS_DIR")
-    else
-        CMD+=(--model "$MODEL_PATH")
-    fi
+    add_model_arg CMD
 
     CMD+=(
         --ctx-size "$CONTEXT"
@@ -183,11 +214,48 @@ build_cmd() {
 }
 
 
-run() {
-    echo "Mode:  $MODE"
-    echo "Model: $MODEL_FILE"
-    exec "${CMD[@]}"
+build_server_plus_embed_cmds() {
+    MAIN_CMD=("$LLAMA_BIN")
+    add_model_arg MAIN_CMD
+
+    MAIN_CMD+=(
+        --ctx-size "$CONTEXT"
+        --gpu-layers "$NGL"
+        --main-gpu "$GPU"
+        --split-mode none
+        --port "$SERVER_PORT"
+    )
+
+    EMBED_CMD=(
+        "$LLAMA_BIN"
+        --model "$EMBED_MODEL_PATH"
+        --embedding
+        --ctx-size 2048
+        --gpu-layers "$NGL"
+        --main-gpu "$GPU"
+        --split-mode none
+        --port "$EMBED_PORT"
+    )
 }
+
+
+
+run() {
+    if [[ "$MODE" == "server_plus_embed" ]]; then
+        echo "Starting embedding server on port $EMBED_PORT"
+        "${EMBED_CMD[@]}" &
+
+        EMBED_PID=$!
+
+        echo "Starting main server on port $SERVER_PORT"
+        exec "${MAIN_CMD[@]}"
+    else
+        echo "Mode:  $MODE"
+        echo "Model: $MODEL_FILE"
+        exec "${CMD[@]}"
+    fi
+}
+
 
 
 main() {
@@ -198,14 +266,24 @@ main() {
 
     load_helpers
     parse_and_check_args "$@"
+
     resolve_model
+
+    if [[ "$MODE" == "server_plus_embed" ]]; then
+        resolve_embed_model
+    fi
 
     select_llama_binary
 
-    build_cmd
+    if [[ "$MODE" == "server_plus_embed" ]]; then
+        build_server_plus_embed_cmds
+    else
+        build_cmd
+    fi
 
     run
 }
+
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     main "$@"
