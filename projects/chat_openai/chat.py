@@ -9,9 +9,9 @@
 Local OpenAI-Compatible Chat Client, targeting llama.cpp running servers.
 
 USAGE:
-    uv run chat_openai.py
-    uv run chat_openai.py --session mychat
-    uv run chat_openai.py --load mychat
+    uv run chat.py
+    uv run chat.py --session mychat
+    uv run chat.py --load mychat
 
 OPTIONS:
     --endpoint URL        OpenAI-compatible API endpoint
