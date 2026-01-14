@@ -1,9 +1,10 @@
-/rag_memvid/*
+rag_memvid/*
 !rag_memvid/README*
 
-/rag_langchain/.*
-rag_langchain/llms/purchased/*
+rag_langchain/.*
+rag_langchain/documents/purchased/*
 rag_langchain/uv.lock
-!rag_langchain/llms/purchased/README.md
+rag_langchain/pgvector_data/*
+!rag_langchain/documents/purchased/README.md
 
 uv.lock

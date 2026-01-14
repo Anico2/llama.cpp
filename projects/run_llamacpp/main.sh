@@ -224,17 +224,24 @@ build_server_plus_embed_cmds() {
         --main-gpu "$GPU"
         --split-mode none
         --port "$SERVER_PORT"
+        --batch-size "$CONTEXT"
+        --ubatch-size "$CONTEXT"
     )
 
     EMBED_CMD=(
         "$LLAMA_BIN"
         --model "$EMBED_MODEL_PATH"
         --embedding
-        --ctx-size 2048
+        --ctx-size "$CONTEXT"
         --gpu-layers "$NGL"
         --main-gpu "$GPU"
         --split-mode none
         --port "$EMBED_PORT"
+        --batch-size "$CONTEXT"
+        --ubatch-size "$CONTEXT"
+        --pooling mean
+        --flash-attn on
+        --no-webui
     )
 }
 
