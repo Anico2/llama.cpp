@@ -1,7 +1,9 @@
 /rag_memvid/*
 !rag_memvid/README*
-!rag_memvid/requirements.txt
 
-/rag_langchain/*
-!rag_langchain/README*
-!rag_langchain/requirements.txt
+/rag_langchain/.*
+rag_langchain/llms/purchased/*
+rag_langchain/uv.lock
+!rag_langchain/llms/purchased/README.md
+
+uv.lock
