@@ -3,36 +3,19 @@
 # Usage Examples:
 # =========================
 # CLI usage (default mode 'completion'):
-# ./llama.sh
+# ./run_llamacpp/main.sh
 #
-# ./llama.sh prompt="Explain transformers simply"
+# ./run_llamacpp/main.sh prompt="Explain transformers simply"
 #
-# ./llama.sh model=llama3instr sys_prompt="Context: " prompt="Summarize AI news"
+# ./run_llamacpp/main.sh model=llama3instr sys_prompt="Context: " prompt="Summarize AI news"
 #
-# ./llama.sh 1 model=mistral7binstrq5 prompt="Write a poem about space"
+# ./run_llamacpp/main.sh 1 model=mistral7binstrq5 prompt="Write a poem about space"
 #
-# ./llama.sh mode=cli model=llama2
+# ./run_llamacpp/main.sh mode=cli model=llama2
 #
-# ./llama.sh mode=server model=mistral7q4
-#
-# Redirect output to a file:
-# ./llama.sh prompt="Summarize AI news" > output.txt
-#
+# ./run_llamacpp/main.sh mode=server model=mistral7q4
 # =========================
-# Library usage (sourced):
-# =========================
-# source ./llama.sh
-# llama_run model=llama3instr prompt="Hello from library"
-#
-# Or call main() directly:
-# main mode=completion model=mistral7binstrq5 prompt="Explain transformers"
-#
-# =========================
-# Notes:
-#   - Available model keys: llama2, llama3instr, mistral7binstrq4, mistral7binstrq5, mistral7q4
-#   - Default GPU is 0, default context size is 4096 tokens
-#   - Valid modes: completion, cli, server
-#   - The script only prints chat output; debug messages are suppressed
+
 
 init_env_vars() {
     export ONEAPI_DEVICE_SELECTOR="level_zero:0"
