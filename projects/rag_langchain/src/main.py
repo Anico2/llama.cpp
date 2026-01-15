@@ -3,7 +3,6 @@ import yaml
 import argparse
 from pathlib import Path
 from dotenv import load_dotenv
-from abc import ABC, abstractmethod
 
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -11,209 +10,145 @@ from langchain_postgres import PGVector
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_classic.indexes import SQLRecordManager, index
+
 from pgvector_utils import check_pgvector_running
-
-pr = Path(__file__).parent.parent
-load_dotenv(pr / ".env", override=True)
-
-with open(pr / "config.yml", "r") as f:
-    CONFIG = yaml.safe_load(f)
-
-check_pgvector_running(start_if_missing=False)
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--rag_mode",
-    type=str,
-    choices=["simple", "rrr", "multi_query"],
-    default="simple",
-    help="RAG mode to use"
-)
-args = parser.parse_args()
-rag_mode = args.rag_mode
-print(f"RAG mode set to: {rag_mode}")
-
-
-raw_documents = []
-for pdf_dir in CONFIG["PDF_DIRS"]:
-    loader = PyPDFDirectoryLoader(pdf_dir)
-    raw_documents.extend(loader.load())
-
-ts_config = CONFIG["text_splitter"]
-text_splitter = RecursiveCharacterTextSplitter(
-    separators=ts_config["separators"],
-    chunk_size=ts_config["chunk_size"],
-    chunk_overlap=ts_config["chunk_overlap"],
-    add_start_index=True
-)
-documents = text_splitter.split_documents(raw_documents)
-print(f"Loaded {len(raw_documents)} documents and created {len(documents)} chunks")
-
-
-embeddings_model = OpenAIEmbeddings(
-    model=CONFIG["embeddings"]["model"],
-    openai_api_base=os.environ.get("EMBEDDING_ENDPOINT"),
-    openai_api_key=os.environ.get("EMBEDDING_API_KEY"),
-    chunk_size=ts_config["chunk_size"],
-    tiktoken_enabled=False,
-    check_embedding_ctx_length=False,
-)
-
-vs_config = CONFIG["vectorstore"]
-collection_name = vs_config["collection_name"]
-connection = os.environ.get("DATABASE_URL")
-namespace = "pdf_docs_namespace"
-
-vectorstore = PGVector(
-    embeddings=embeddings_model,
-    collection_name=collection_name,
-    connection=connection,
-    use_jsonb=True,  # recommended for metadata storage
-)
-
-record_manager = SQLRecordManager(namespace, db_url=connection)
-record_manager.create_schema()  # ensures table exists
-
-# Add unique source metadata if missing (needed for incremental indexing)
-for doc in documents:
-    if "source" not in doc.metadata:
-        # You can use original file path or chunk index
-        doc.metadata["source"] = doc.metadata.get("source_file", f"chunk_{id(doc)}")
-
-# Incremental indexing: only new or updated documents are added
-index(
-    documents,
-    record_manager,
-    vectorstore,
-    cleanup="incremental",
-    source_id_key="source",
-    key_encoder="sha256"
-)
-
-retriever = vectorstore.as_retriever(search_kwargs=vs_config["search_kwargs"])
-
-
-llm_config = CONFIG["llm"]
-llm = ChatOpenAI(
-    model=llm_config["model"],
-    temperature=llm_config.get("temperature", 0),
-    openai_api_base=os.environ.get("MODEL_ENDPOINT"),
-    openai_api_key=os.environ.get("MODEL_API_KEY"),
-)
-
-qa_prompt = ChatPromptTemplate.from_template(
-    """Answer the question using only the following context (if the context is not useful, say 'I don't know'):
-{context}
-
-Question: {question}"""
+from rag import (
+    SimpleRAGStrategy,
+    RRRStrategy,
+    MultiQueryRAGStrategy,
 )
 
 
-class BaseRAGStrategy(ABC):
-    @abstractmethod
-    def answer(self, query: str) -> str:
-        pass
+PROJECT_ROOT = Path(__file__).parent.parent
 
 
-class RRRStrategy(BaseRAGStrategy):
-    def __init__(self, retriever, llm, prompt, cache_rewrites=True):
-        self.retriever = retriever
-        self.llm = llm
-        self.prompt = prompt
-        self.cache_rewrites = cache_rewrites
-        self._rewrite_cache = {}
-        self._answer_cache = {}
+def load_env_config():
+    load_dotenv(PROJECT_ROOT / ".env", override=True)
 
-        self.rewrite_prompt = ChatPromptTemplate.from_template(
-            "Rewrite the following question into a concise search query suitable "
-            "for retrieving relevant documents. End the query with '###'.\n"
-            "Question: {x}"
+    with open(PROJECT_ROOT / "config.yml") as f:
+        return yaml.safe_load(f)
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="PDF RAG pipeline",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--rag-mode",
+        choices=["simple", "rrr", "multi_query"],
+        default="simple",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable rewrite caching (RRR only)",
+    )
+    return parser.parse_args()
+
+
+def load_split_documents(pdf_dirs, cfg):
+    raw_docs = []
+    for d in pdf_dirs:
+        raw_docs.extend(PyPDFDirectoryLoader(d).load())
+    
+    splitter = RecursiveCharacterTextSplitter(**cfg)
+    docs = splitter.split_documents(raw_docs)
+    
+    # ensure metadata
+    for d in docs:
+        d.metadata.setdefault(
+            "source",
+            d.metadata.get("source_file", f"chunk_{id(d)}"),
         )
-        self.rewriter_chain = self.rewrite_prompt | self.llm | self.parse_rewriter_output
+    return raw_docs, docs
 
-    def parse_rewriter_output(self, message):
-        return message.content.strip('"').strip("###")
+    
+def main():
+    cfg = load_env_config()
+    
+    args = parse_args()
+    
+    check_pgvector_running(start_if_missing=False)
 
-    def answer(self, query: str) -> str:
-        if query in self._answer_cache:
-            return self._answer_cache[query]
+    raw_docs, docs = load_split_documents(cfg["PDF_DIRS"], cfg["text_splitter"])
 
-        if self.cache_rewrites and query in self._rewrite_cache:
-            rewritten_query = self._rewrite_cache[query]
-            print("Using cached rewritten query:", rewritten_query)
-        else:
-            rewritten_query = self.rewriter_chain.invoke(query)
-            if self.cache_rewrites:
-                self._rewrite_cache[query] = rewritten_query
-            print("Rewritten query:", rewritten_query)
+    print(f"Loaded {len(raw_docs)} docs → {len(docs)} chunks")
 
-        docs = self.retriever.invoke(rewritten_query)
-        formatted_prompt = self.prompt.invoke({"context": docs, "question": query})
-        answer = self.llm.invoke(formatted_prompt)
+    embeddings = OpenAIEmbeddings(
+        model=cfg["embeddings"]["model"],
+        openai_api_base=os.environ["EMBEDDING_ENDPOINT"],
+        openai_api_key=os.environ["EMBEDDING_API_KEY"],
+        tiktoken_enabled=False,
+        check_embedding_ctx_length=False,
+    )
 
-        if self.cache_rewrites:
-            self._answer_cache[query] = answer
+    vectorstore = PGVector(
+        embeddings=embeddings,
+        collection_name=cfg["vectorstore"]["collection_name"],
+        connection=os.environ["DATABASE_URL"],
+        use_jsonb=True,
+    )
 
-        return answer
+    record_manager = SQLRecordManager(
+        "pdf_docs_namespace",
+        db_url=os.environ["DATABASE_URL"],
+    )
+    record_manager.create_schema()
+
+    index(
+        docs,
+        record_manager,
+        vectorstore,
+        cleanup="incremental",
+        source_id_key="source",
+        key_encoder="sha256",
+    )
+
+    retriever = vectorstore.as_retriever(
+        search_kwargs=cfg["vectorstore"]["search_kwargs"]
+    )
+
+    llm = ChatOpenAI(
+        model=cfg["llm"]["model"],
+        temperature=cfg["llm"].get("temperature", 0),
+        openai_api_base=os.environ["MODEL_ENDPOINT"],
+        openai_api_key=os.environ["MODEL_API_KEY"],
+    )
+
+    prompt = ChatPromptTemplate.from_template(
+        """ Answer the question enclosed in () using your knowlodge and the context in <<< >>>.
+            If the provided context is relevant, use it to enrich your knowledge
+            and and append to your answer the string "CTX_USED". 
+            If not relevant, ignore the context and answer the question with your 
+            knowledge only and append to your answer the string "CTX_NOT_USED".
+
+            <<<
+            {context}
+            >>>
+
+            Question: ({question})
+            """
+    )
+
+    strategies = {
+        "simple": SimpleRAGStrategy,
+        "rrr": lambda **kw: RRRStrategy(cache=not args.no_cache, **kw),
+        "multi_query": MultiQueryRAGStrategy,
+    }
+
+    rag = strategies[args.rag_mode](
+        retriever=retriever,
+        llm=llm,
+        prompt=prompt,
+    )
+
+    while True:
+        q = input("\nAsk a question (q to quit): ").strip()
+        if q.lower() in {"q", "quit", "exit"}:
+            break
+        answer = rag.answer(q)
+        print("\nAnswer:\n", answer.content)
 
 
-class MultiQueryRAGStrategy(BaseRAGStrategy):
-    def __init__(self, retriever, llm, prompt, num_queries=5):
-        self.retriever = retriever
-        self.llm = llm
-        self.prompt = prompt
-        self.num_queries = num_queries
-
-        self.perspectives_prompt = ChatPromptTemplate.from_template(
-            f"""You are an AI language model assistant. Your task is to generate {self.num_queries} different versions 
-            of the given user question to retrieve relevant documents from a vector database. 
-            By generating multiple perspectives on the user question, your goal is to help the user overcome 
-            some of the limitations of distance-based similarity search. 
-            Provide these alternative questions separated by newlines. 
-            Original question: {{question}}"""
-        )
-
-    def parse_queries_output(self, message):
-        return [q.strip() for q in message.content.split("\n") if q.strip()]
-
-    def get_unique_union(self, document_lists):
-        deduped_docs = {doc.page_content: doc for sublist in document_lists for doc in sublist}
-        return list(deduped_docs.values())
-
-    def answer(self, query: str) -> str:
-        query_gen = self.perspectives_prompt | self.llm | self.parse_queries_output
-        queries = query_gen.invoke(query)
-        doc_lists = [self.retriever.invoke(q) for q in queries]
-        combined_docs = self.get_unique_union(doc_lists)
-        formatted_prompt = self.prompt.invoke({"context": combined_docs, "question": query})
-        return self.llm.invoke(formatted_prompt)
-
-
-class SimpleRAGStrategy(BaseRAGStrategy):
-    def __init__(self, retriever, llm, prompt):
-        self.retriever = retriever
-        self.llm = llm
-        self.prompt = prompt
-
-    def answer(self, query: str) -> str:
-        docs = self.retriever.invoke(query)
-        formatted_prompt = self.prompt.invoke({"context": docs, "question": query})
-        return self.llm.invoke(formatted_prompt)
-
-
-RAG_STRATEGIES = {
-    "simple": SimpleRAGStrategy,
-    "rrr": RRRStrategy,
-    "multi_query": MultiQueryRAGStrategy,
-}
-
-
-strategy_class = RAG_STRATEGIES[rag_mode]
-strategy = strategy_class(retriever=retriever, llm=llm, prompt=qa_prompt)
-
-while True:
-    query = input("\nAsk a question (or 'exit'/'quit'/'q'): ")
-    if query.lower() in ["exit", "quit", "q"]:
-        break
-    result = strategy.answer(query)
-    print("\nAnswer:\n", result.content if hasattr(result, "content") else result)
+if __name__ == "__main__":
+    main()

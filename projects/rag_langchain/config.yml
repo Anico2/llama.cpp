@@ -1,7 +1,7 @@
 # PDF directories to load
 PDF_DIRS:
   - ./documents/free
-  #- ./documents/purchased
+  - ./documents/purchased
 
 # Text splitting
 text_splitter:
@@ -21,7 +21,7 @@ vectorstore:
 
 # LLM defaults
 llm:
-  model:  mistral-7b-instruct-v0.1.Q5_K_M # mistral-7b-instruct-v0.1.Q4_K_M # 
+  model:  mistral-7b-instruct-v0.1.Q5_K_M 
   temperature: 0
   chain_type: stuff
 embeddings:

@@ -16,6 +16,21 @@
 # ./run_llamacpp/main.sh mode=server model=mistral7q4
 # =========================
 
+init_model_map() {
+    MODEL_MAP=$(cat <<EOF
+llama2_q4:llama-2-7b.Q4_0.gguf
+llama3instr_q5:Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf
+mistral7binstr_q4:mistral-7b-instruct-v0.1.Q4_K_M.gguf
+mistral7binstr_q5:mistral-7b-instruct-v0.1.Q5_K_M.gguf
+qwen3b_q6:Qwen2.5-3B-Q6_K-Instruct.gguf
+smollm2_q6:SmolLM2-1.7B-Q6_K-Instruct.gguf
+
+# Embeddings
+nomic_embed:nomic-embed-text-v1.5.Q8_0.gguf
+bge_small:bge-small-en-v1.5.Q8_0.gguf
+EOF
+)
+}
 
 init_env_vars() {
     export ONEAPI_DEVICE_SELECTOR="level_zero:0"
@@ -39,7 +54,6 @@ init_defaults_params() {
     EMBED_PORT=8081
 }
 
-
 init_allowed_keys() {
     ALLOWED_KEYS=(
         model
@@ -47,24 +61,11 @@ init_allowed_keys() {
         sys_prompt
         prompt
         mode
+        context
     )
 }
 
-init_model_map() {
-    MODEL_MAP=$(cat <<EOF
-llama2_q4:llama-2-7b.Q4_0.gguf
-llama3instr_q5:Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf
-mistral7binstr_q4:mistral-7b-instruct-v0.1.Q4_K_M.gguf
-mistral7binstr_q5:mistral-7b-instruct-v0.1.Q5_K_M.gguf
-qwen3b_q6:Qwen2.5-3B-Q6_K-Instruct.gguf
-smollm2_q6:SmolLM2-1.7B-Q6_K-Instruct.gguf
 
-# Embeddings
-nomic_embed:nomic-embed-text-v1.5.Q8_0.gguf
-bge_small:bge-small-en-v1.5.Q8_0.gguf
-EOF
-)
-}
 
 load_helpers() {
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -93,6 +94,7 @@ parse_and_check_args() {
             sys_prompt=*) SYS_PROMPT="${arg#*=}" ;;
             prompt=*)     PROMPT="${arg#*=}" ;;
             mode=*)       MODE="${arg#*=}" ;;
+            context=*)    CONTEXT="${arg#*=}" ;;
             *)
                 if [[ "$arg" =~ ^[0-9]+$ ]]; then
                     GPU="$arg"
