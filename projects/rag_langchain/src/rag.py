@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import List
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableLambda
 
 
 class BaseRAGStrategy(ABC):
