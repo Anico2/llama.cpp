@@ -5,6 +5,7 @@ rag_langchain/.*
 rag_langchain/documents/purchased/*
 rag_langchain/uv.lock
 rag_langchain/pgvector_data/*
+!rag_langchain/pgvector_data/README.md
 !rag_langchain/documents/purchased/README.md
 
 uv.lock
