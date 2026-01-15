@@ -40,7 +40,6 @@ init_env_vars() {
 }
 
 init_defaults_params() {
-    MODELS_DIR="$HOME/models"
     MODEL_KEY="mistral7binstrq4"
     EMBED_MODEL_KEY="nomic-embed-text-v1.5.Q8_0"
     CONTEXT=4096
@@ -68,7 +67,7 @@ init_allowed_keys() {
 
 
 load_helpers() {
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    
     source "$SCRIPT_DIR/arg_utils.sh"
 }
 
@@ -278,5 +277,7 @@ main() {
 
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    MODELS_DIR="$(dirname "$SCRIPT_DIR")/models_gguf"
     main "$@"
 fi
