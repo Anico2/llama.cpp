@@ -1,6 +1,0 @@
-requests
-openai
-
-memvid-sdk[langchain]
-memvid-sdk[openai]
-memvid-sdk[documents]
