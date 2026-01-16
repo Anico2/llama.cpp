@@ -1,1 +1,1 @@
-Folder for creating memvid projects
+Folder for creating rag projects using memvid as vector DB (work in progress)
