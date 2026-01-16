@@ -7,7 +7,32 @@
 # ///
 """
 Local OpenAI-Compatible Chat Client, targeting llama.cpp running servers.
+
+USAGE: 
+    uv run chat.py 
+    uv run chat.py --session mychat 
+    uv run chat.py --load mychat 
+
+OPTIONS: 
+    --endpoint URL OpenAI-compatible API endpoint (default: http://localhost:8080) 
+    --model NAME Model ID to use (defaults to first available). See main.sh for available models. 
+    --session NAME Name of session to create/use (default: "default") 
+    --load NAME Load an existing session from disk 
+    -temperature FLOAT Sampling temperature (default: 0.7) 
+    --top-p FLOAT Nucleus sampling probability (default: 0.95) 
+    --max-tokens INT Max completion tokens per response (default: 800) 
+
+INTERACTIVE COMMANDS: 
+    /save Save the current session to disk 
+    /reset Clear conversation history (keeps system prompt) 
+    /exit Exit the chat (auto-saves on exit) 
+
+NOTES: 
+    - Conversations are stored as JSON files in ./sessions 
+    - Supports streaming responses and simple tool/function calls 
+    - Long conversations are automatically summarized to preserve context 
 """
+
 
 import argparse
 import json

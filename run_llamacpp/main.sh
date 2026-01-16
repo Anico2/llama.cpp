@@ -9,11 +9,11 @@
 #
 # ./run_llamacpp/main.sh model=llama3instr sys_prompt="Context: " prompt="Summarize AI news"
 #
-# ./run_llamacpp/main.sh 1 model=mistral7binstrq5 prompt="Write a poem about space"
+# ./run_llamacpp/main.sh model=mistral7binstr_q4 prompt="Write a poem about space"
 #
-# ./run_llamacpp/main.sh mode=cli model=llama2
+# ./run_llamacpp/main.sh mode=cli model=llama2_q4
 #
-# ./run_llamacpp/main.sh mode=server model=mistral7q4
+# ./run_llamacpp/main.sh mode=server model=qwen3b_q6
 # =========================
 
 init_model_map() {
