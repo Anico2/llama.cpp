@@ -1,0 +1,6 @@
+### projects ###
+.*
+!.gitignore
+
+# ignore memvid db files
+*.mv2
