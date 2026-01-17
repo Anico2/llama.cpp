@@ -23,6 +23,12 @@ dependencies = [
     "duckduckgo-search>=7.3.0",
     "langgraph-cli>=0.1.73",
     "pypdfium2>=5.0.0",
+    "ragas>=0.4.4",
+    "seaborn>=0.13.2",
+    "matplotlib>=3.9.0",
+    "pandas>=2.0.0",
+    "datasets>=4.0.0",
+    "rapidfuzz>=3.14.0"
 ]
 
 [build-system]

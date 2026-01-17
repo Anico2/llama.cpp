@@ -17,13 +17,13 @@ from rag import (
     SimpleRAGStrategy,
     RRRStrategy,
     MultiQueryRAGStrategy,
-    RouterRAGStrategy 
+    RouterRAGStrategy,
+    RerankRAGStrategy,
 )
 from chunking import LLMSemanticChunker
 
 logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("RAG-Main")
 
@@ -34,6 +34,33 @@ def load_env_config():
     with open(PROJECT_ROOT / "config.yml") as f:
         return yaml.safe_load(f)
 
+def get_model_classes(cfg, llm_model=None, embedding_model=None):
+    llm_model = llm_model if llm_model else cfg["llm"]["model"]
+    llm = ChatOpenAI(
+        model=llm_model,
+        temperature=cfg["llm"].get("temperature", 0),
+        openai_api_base=os.environ["MODEL_ENDPOINT"],
+        openai_api_key=os.environ["MODEL_API_KEY"],
+    )
+    embedding_model = embedding_model if embedding_model else cfg["embeddings"]["model"]
+    embeddings = OpenAIEmbeddings(
+        model=embedding_model,
+        openai_api_base=os.environ["EMBEDDING_ENDPOINT"],
+        openai_api_key=os.environ["EMBEDDING_API_KEY"],
+        tiktoken_enabled=False,
+        check_embedding_ctx_length=False,
+    )
+
+    return llm, embeddings
+
+
+def get_vectorstore(cfg, embeddings):
+    return PGVector(
+        embeddings=embeddings,
+        collection_name=cfg["vectorstore"]["collection_name"],
+        connection=os.environ["DATABASE_URL"],
+        use_jsonb=True,
+    )
 def parse_args():
     parser = argparse.ArgumentParser(
         description="PDF RAG pipeline",
@@ -60,7 +87,8 @@ def load_split_documents(pdf_dirs, cfg, llm):
     raw_docs = []
     for d in pdf_dirs:
         path = Path(d)
-        if not path.exists(): continue
+        if not path.exists():
+            continue
         for pdf_file in path.rglob("*.pdf"):
             try:
                 loader = PyPDFium2Loader(str(pdf_file))
@@ -69,7 +97,7 @@ def load_split_documents(pdf_dirs, cfg, llm):
                 logger.error(f"Error loading {pdf_file}: {e}")
 
     chunk_strategy = cfg.get("chunk_strategy", "recursive")
-    
+
     if chunk_strategy == "semantic":
         logger.info("Using LLM-Native Semantic Chunking (slower)")
         splitter = LLMSemanticChunker(llm=llm)
@@ -81,36 +109,18 @@ def load_split_documents(pdf_dirs, cfg, llm):
 
     for d in docs:
         d.metadata.setdefault("source", d.metadata.get("source", "unknown"))
-        
+
     return raw_docs, docs
 
 def main():
     cfg = load_env_config()
     args = parse_args()
-    
+
     check_pgvector_running(start_if_missing=False)
 
-    embeddings = OpenAIEmbeddings(
-        model=cfg["embeddings"]["model"],
-        openai_api_base=os.environ["EMBEDDING_ENDPOINT"],
-        openai_api_key=os.environ["EMBEDDING_API_KEY"],
-        tiktoken_enabled=False,
-        check_embedding_ctx_length=False,
-    )
+    llm, embeddings = get_model_classes(cfg)
 
-    vectorstore = PGVector(
-        embeddings=embeddings,
-        collection_name=cfg["vectorstore"]["collection_name"],
-        connection=os.environ["DATABASE_URL"],
-        use_jsonb=True,
-    )
-
-    llm = ChatOpenAI(
-        model=cfg["llm"]["model"],
-        temperature=cfg["llm"].get("temperature", 0),
-        openai_api_base=os.environ["MODEL_ENDPOINT"],
-        openai_api_key=os.environ["MODEL_API_KEY"],
-    )
+    vectorstore = get_vectorstore(cfg, embeddings)
 
     # For efficiency, we optionally skip ingestion if not needed
     if args.ingest:
@@ -134,11 +144,8 @@ def main():
         )
         logger.info(f"Indexing Summary: {indexing_result}")
 
-    
-    retriever = vectorstore.as_retriever(
-        search_kwargs=cfg["vectorstore"]["search_kwargs"]
-    )
-    
+    search_kwargs = cfg["vectorstore"]["search_kwargs"]
+    retriever = vectorstore.as_retriever(search_kwargs=search_kwargs)
     # General RAG prompt
     prompt = ChatPromptTemplate.from_template(
         """Answer the question enclosed in parentheses based on the context provided.
@@ -156,37 +163,45 @@ def main():
 
     # Collect all available strategies here. If user passes auto mode,
     # the llm will pick the best strategy based on question complexity.
+    common = {"retriever": retriever, "llm": llm, "prompt": prompt}
     strategy_instances = {
-        "simple": SimpleRAGStrategy(retriever, llm, prompt),
-        "rrr": RRRStrategy(retriever, llm, prompt, cache=not args.no_cache),
-        "multi_query": MultiQueryRAGStrategy(retriever, llm, prompt),
+        "simple": SimpleRAGStrategy(**common),
+        "rrr": RRRStrategy(**common, cache=not args.no_cache),
+        "multi_query": MultiQueryRAGStrategy(**common),
+        "rerank": RerankRAGStrategy(**common),
     }
 
     logger.info(f"RAG Mode: {args.rag_mode.upper()}")
+
     if args.rag_mode == "auto":
         rag = RouterRAGStrategy(strategies=strategy_instances, llm=llm)
     else:
-        rag = strategy_instances[args.rag_mode]
+        # Check if the user requested a mode that isn't instantiated
+        if args.rag_mode not in strategy_instances:
+            logger.warning(f"Mode {args.rag_mode} not found, defaulting to simple")
+            rag = strategy_instances["simple"]
+        else:
+            rag = strategy_instances[args.rag_mode]
 
     print(f"\n--- RAG Pipeline Ready [{args.rag_mode}] ---")
-    
+
     while True:
         try:
             q = input("\nAsk a question (q to terminate): ").strip()
             if q.lower() in {"q", "quit", "exit"}:
                 break
-            if not q: 
+            if not q:
                 continue
 
             result = rag.answer(q)
-            
-            print("\n" + "="*20 + " ANSWER " + "="*20)
+
+            print("\n" + "=" * 20 + " ANSWER " + "=" * 20)
             print(result["answer"])
-            print("="*48)
-            
+            print("=" * 50)
+
             if result.get("context_used"):
                 print("Unique sources:")
-                
+
                 seen_sources = set()
                 for doc in result["source_documents"]:
                     src = os.path.basename(doc.metadata.get("source", "unknown"))

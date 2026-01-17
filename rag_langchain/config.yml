@@ -7,8 +7,8 @@ chunk_strategy: recursive # semantic or recursive
 
 # Text splitting
 text_splitter:
-  chunk_size: 2000
-  chunk_overlap: 200
+  chunk_size: 1000
+  chunk_overlap: 100
   separators:
     - "\n\n"
     - "\n"
@@ -19,12 +19,18 @@ text_splitter:
 vectorstore:
   collection_name: documents
   search_kwargs:
-    k: 5 # how many documents to retrieve
+    k: 3 # how many documents to retrieve
 
 # LLM defaults
 llm:
-  model:  SmolLM2-1.7B-Q6_K-Instruct #mistral-7b-instruct-v0.1.Q5_K_M 
+  model:  mistral-7b-instruct-v0.1.Q5_K_M 
   temperature: 0
   chain_type: stuff
 embeddings:
   model: nomic-embed-text-v1.5
+
+# Ragas evaluation settings
+evaluation:
+  test_file_path: test_dataset.csv
+  judge_llm:
+    model: mistral-7b-instruct-v0.1.Q5_K_M 
