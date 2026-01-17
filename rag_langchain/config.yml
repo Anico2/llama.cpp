@@ -3,6 +3,8 @@ PDF_DIRS:
   - ./documents/free
   #- ./documents/purchased
 
+chunk_strategy: recursive # semantic or recursive
+
 # Text splitting
 text_splitter:
   chunk_size: 2000
@@ -17,11 +19,11 @@ text_splitter:
 vectorstore:
   collection_name: documents
   search_kwargs:
-    k: 1 # how many documents to retrieve
+    k: 5 # how many documents to retrieve
 
 # LLM defaults
 llm:
-  model:  mistral-7b-instruct-v0.1.Q5_K_M 
+  model:  SmolLM2-1.7B-Q6_K-Instruct #mistral-7b-instruct-v0.1.Q5_K_M 
   temperature: 0
   chain_type: stuff
 embeddings:

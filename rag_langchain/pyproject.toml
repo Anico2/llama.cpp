@@ -4,6 +4,7 @@ version = "0.1.0"
 license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.10"
+# need to copy and paste requirements because uv sync does not support dynamic metadata
 dependencies = [
     "requests",
     "langgraph>=0.2.6",
@@ -21,6 +22,7 @@ dependencies = [
     "langgraph-checkpoint-sqlite>=2.0.3",
     "duckduckgo-search>=7.3.0",
     "langgraph-cli>=0.1.73",
+    "pypdfium2>=5.0.0",
 ]
 
 [build-system]

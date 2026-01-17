@@ -14,3 +14,4 @@ langsmith>=0.3.2
 langgraph-checkpoint-sqlite>=2.0.3
 duckduckgo-search>=7.3.0
 langgraph-cli>=0.1.73
+pypdfium2>=5.0.0
