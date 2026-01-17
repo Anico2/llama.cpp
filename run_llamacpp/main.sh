@@ -24,6 +24,8 @@ mistral7binstr_q4:mistral-7b-instruct-v0.1.Q4_K_M.gguf
 mistral7binstr_q5:mistral-7b-instruct-v0.1.Q5_K_M.gguf
 qwen3b_q6:Qwen2.5-3B-Q6_K-Instruct.gguf
 smollm2_q6:SmolLM2-1.7B-Q6_K-Instruct.gguf
+gemma4b_q5:gemma-3-4b-it.Q5_K_M.gguf
+liquid25_f16:LFM2.5-1.2B-Instruct-F16.gguf
 
 # Embeddings
 nomic_embed:nomic-embed-text-v1.5.Q8_0.gguf
