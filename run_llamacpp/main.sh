@@ -40,31 +40,33 @@ init_env_vars() {
 }
 
 init_defaults_params() {
-    MODEL_KEY="mistral7binstrq4"
-    EMBED_MODEL_KEY="nomic-embed-text-v1.5.Q8_0"
-    CONTEXT=4096
-    NGL=99
+    ## TODO: put this into external file ##
+
+    ## Default models and related configurations ##
+    MODEL_KEY="mistral7binstr_q5"
+    EMBED_MODEL_KEY="nomic_embed"
+    CONTEXT=14000
+    PARALLEL=2 # real context becomes approximately -> CONTEXT / PARALLEL
+               # so put this > 1 only if necessary
+
+    ## Default prompts and modes ##
     PROMPT="No prompt provided."
-    SYS_PROMPT=""
-    GPU="0"
+    SYS_PROMPT="You are a helpful assistant."
     MODE="completion"
+    ####
 
-    SERVER_PORT=8080
-    EMBED_PORT=8081
+    ## GPU and hardware configs ##
+    NGL=1 # We currently only have 1 GPU
+    GPU="0" # Default GPU ID
+    SPLIT_MODE="none" # set to 'none' since we currently have 1 GPU only
+    THREADS=6 
+    ####
+
+    ## Server ports ##
+    LLM_PORT=8080
+    EMBEDDING_LLM_PORT=8081
+    ####
 }
-
-init_allowed_keys() {
-    ALLOWED_KEYS=(
-        model
-        embed_model
-        sys_prompt
-        prompt
-        mode
-        context
-    )
-}
-
-
 
 load_helpers() {
     
@@ -73,6 +75,16 @@ load_helpers() {
 
 
 parse_and_check_args() {
+
+    ALLOWED_KEYS=(
+        model
+        embed_model
+        sys_prompt
+        prompt
+        mode
+        context
+    )
+
     for arg in "$@"; do
         
         if [[ "$arg" == *=* ]]; then
@@ -170,17 +182,22 @@ add_model_arg() {
     fi
 }
 
+build_common_llama_args() {
+    local _cmd_ref=$1
+
+    eval "$_cmd_ref+=(
+        --ctx-size \"$CONTEXT\"
+        --gpu-layers \"$NGL\"
+        --main-gpu \"$GPU\"
+        --split-mode \"$SPLIT_MODE\"
+        --threads \"$THREADS\"
+    )"
+}
+
 build_cmd() {
     CMD=("$LLAMA_BIN")
-
     add_model_arg CMD
-
-    CMD+=(
-        --ctx-size "$CONTEXT"
-        --gpu-layers "$NGL"
-        --main-gpu "$GPU"
-        --split-mode none
-    )
+    build_common_llama_args CMD
 
     if [[ "$MODE" == "completion" || "$MODE" == "cli" ]]; then
         CMD+=(
@@ -188,10 +205,8 @@ build_cmd() {
             --system-prompt "$SYS_PROMPT"
             --conversation
             --predict 1000
-            --repeat-penalty 1.5
-            --chat-template vicuna
-            --temp 0.5
-            --reasoning-format deepseek
+            --repeat-penalty 1.2
+            --temp 0.1
             --escape
         )
     fi
@@ -201,47 +216,41 @@ build_cmd() {
 build_server_plus_embed_cmds() {
     MAIN_CMD=("$LLAMA_BIN")
     add_model_arg MAIN_CMD
+    build_common_llama_args MAIN_CMD
 
     MAIN_CMD+=(
-        --ctx-size "$CONTEXT"
-        --gpu-layers "$NGL"
-        --main-gpu "$GPU"
-        --split-mode none
-        --port "$SERVER_PORT"
-        --batch-size 2048
+        --port "$LLM_PORT"
+        --batch-size 1024
         --ubatch-size 512
         --flash-attn on
+        --parallel "$PARALLEL"
     )
 
     EMBED_CMD=(
         "$LLAMA_BIN"
         --model "$EMBED_MODEL_PATH"
         --embedding
-        --parallel 1
-        --ctx-size 512
-        --gpu-layers 1
+        --ctx-size 8192
+        --gpu-layers "$NGL"
         --main-gpu "$GPU"
-        --split-mode none
-        --port "$EMBED_PORT"
-        --batch-size 512
-        --ubatch-size 512
+        --split-mode "$SPLIT_MODE"
+        --threads "$THREADS"
+        --port "$EMBEDDING_LLM_PORT"
+        --batch-size 2048
+        --ubatch-size 2048
         --pooling mean
-        --flash-attn on
         --no-webui
-        --cache-ram 1
     )
 }
 
-
-
 run() {
     if [[ "$MODE" == "server_plus_embed" ]]; then
-        echo "Starting embedding server on port $EMBED_PORT"
+        echo "Starting embedding server on port $EMBEDDING_LLM_PORT"
         "${EMBED_CMD[@]}" &
 
         EMBED_PID=$!
 
-        echo "Starting main server on port $SERVER_PORT"
+        echo "Starting main server on port $LLM_PORT"
         exec "${MAIN_CMD[@]}"
     else
         echo "Mode:  $MODE"
@@ -255,7 +264,6 @@ run() {
 main() {
     init_env_vars
     init_defaults_params
-    init_allowed_keys
     init_model_map
 
     load_helpers
