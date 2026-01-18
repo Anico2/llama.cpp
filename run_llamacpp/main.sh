@@ -26,6 +26,7 @@ qwen3b_q6:Qwen2.5-3B-Q6_K-Instruct.gguf
 smollm2_q6:SmolLM2-1.7B-Q6_K-Instruct.gguf
 gemma4b_q5:gemma-3-4b-it.Q5_K_M.gguf
 liquid25_f16:LFM2.5-1.2B-Instruct-F16.gguf
+qwen_coder1.5b_q8:qwen2.5-coder-1.5b-q8_0.gguf
 
 # Embeddings
 nomic_embed:nomic-embed-text-v1.5.Q8_0.gguf
@@ -37,8 +38,13 @@ EOF
 init_env_vars() {
     export ONEAPI_DEVICE_SELECTOR="level_zero:0"
     source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1
+    
+    # MEMORY AND PERFORMANCE RELATED VARS 
     export UR_L0_ENABLE_RELAXED_ALLOCATION_LIMITS=1
     export ZES_ENABLE_SYSMAN=1
+    # Reduces CPU-GPU latency
+    export SYCL_PI_LEVEL_ZERO_USE_IMMEDIATE_COMMANDLISTS=1 
+    
 }
 
 init_defaults_params() {
@@ -47,8 +53,8 @@ init_defaults_params() {
     ## Default models and related configurations ##
     MODEL_KEY="mistral7binstr_q5"
     EMBED_MODEL_KEY="nomic_embed"
-    CONTEXT=14000
-    PARALLEL=2 # real context becomes approximately -> CONTEXT / PARALLEL
+    CONTEXT=0 # 0 means that llama.cpp uses model default context size
+    PARALLEL=1 # real context becomes approximately -> CONTEXT / PARALLEL
                # so put this > 1 only if necessary
 
     ## Default prompts and modes ##
@@ -58,10 +64,12 @@ init_defaults_params() {
     ####
 
     ## GPU and hardware configs ##
-    NGL=1 # We currently only have 1 GPU
+    NGL=99 # Number of GPU layers, set to 99 to offload as much as possible to GPU
     GPU="0" # Default GPU ID
     SPLIT_MODE="none" # set to 'none' since we currently have 1 GPU only
-    THREADS=6 
+    THREADS=4
+    LLM_BATCH_SIZE=2048
+    LLM_UBATCH_SIZE=1024
     ####
 
     ## Server ports ##
@@ -193,6 +201,11 @@ build_common_llama_args() {
         --main-gpu \"$GPU\"
         --split-mode \"$SPLIT_MODE\"
         --threads \"$THREADS\"
+        --batch-size "$LLM_BATCH_SIZE"
+        --ubatch-size "$LLM_UBATCH_SIZE"
+        --flash-attn off # currently flash-attn has issues on Intel GPUs
+        --parallel "$PARALLEL"
+        
     )"
 }
 
@@ -208,6 +221,8 @@ build_cmd() {
             --conversation
             --predict 1000
             --repeat-penalty 1.2
+            --batch-size "$BATCH_SIZE"
+            --ubatch-size "$UBATCH_SIZE"
             --temp 0.1
             --escape
         )
@@ -222,10 +237,6 @@ build_server_plus_embed_cmds() {
 
     MAIN_CMD+=(
         --port "$LLM_PORT"
-        --batch-size 1024
-        --ubatch-size 512
-        --flash-attn on
-        --parallel "$PARALLEL"
     )
 
     EMBED_CMD=(
