@@ -27,6 +27,8 @@ smollm2_q6:SmolLM2-1.7B-Q6_K-Instruct.gguf
 gemma4b_q5:gemma-3-4b-it.Q5_K_M.gguf
 liquid25_f16:LFM2.5-1.2B-Instruct-F16.gguf
 qwen_coder1.5b_q8:qwen2.5-coder-1.5b-q8_0.gguf
+qwen3vl_instr_4b_q4:Qwen3-VL-4B-Instruct-UD-Q4_K_XL.gguf
+qwen3vl_think_4b_q4:Qwen3-VL-4B-Thinking-UD-Q4_K_XL.gguf 
 
 # Embeddings
 nomic_embed:nomic-embed-text-v1.5.Q8_0.gguf
