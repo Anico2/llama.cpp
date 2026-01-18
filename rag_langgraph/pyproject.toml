@@ -1,0 +1,41 @@
+[project]
+name = "langgraph_prj"
+version = "0.1.0"
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.10"
+# need to copy and paste requirements because uv sync does not support dynamic metadata
+dependencies = [
+    "requests",
+    "langgraph>=0.2.6",
+    "langchain-openai>=0.1.22",
+    "langchain>=0.2.14",
+    "python-dotenv>=1.0.1",
+    "langchain-community>=0.3.15",
+    "langchain-postgres>=0.0.12",
+    "langchain-chroma>=0.2.0",
+    "beautifulsoup4>=4.12.2",
+    "pypdf>=5.1.0",
+    "psycopg[binary]>=3.2.4",  # Updated to include [binary] extra
+    "setuptools>=75.8.0",
+    "langsmith>=0.3.2",
+    "langgraph-checkpoint-sqlite>=2.0.3",
+    "duckduckgo-search>=7.3.0",
+    "langgraph-cli>=0.1.73",
+    "pypdfium2>=5.0.0",
+    "ragas>=0.4.0",
+    "seaborn>=0.13.2",
+    "matplotlib>=3.9.0",
+    "pandas>=2.0.0",
+    "datasets>=4.0.0",
+    "rapidfuzz>=3.14.0"
+]
+
+[build-system]
+requires = ["uv_build >= 0.9.21, <0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "src"
+namespace = true
+
