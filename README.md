@@ -1,8 +1,14 @@
 Branch containing different projects (some are work in progress).  
-The engine is based on llama.cpp, used for running quantized llms, and an intel-GPU running with SYCL backend.
+The engine is based on llama.cpp, used for running quantized llms, and an Intel-GPU running with SYCL backend. If necessary, one has to install the [GPU drivers](https://dgpu-docs.intel.com/driver/installation.html) and, to use the SYCL backend,one needs the [Intel-oneAPI](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit-download.html). More information on the [Intel official guide](https://www.intel.com/content/www/us/en/developer/articles/technical/run-llms-on-gpus-using-llama-cpp.html).
 
+- [1. How to download, quantize and add a model to the models folder](#1-how-to-download-quantize-and-add-a-model-to-the-models-folder)
+- [2. How to run llama-server](#2-how-to-run-llama-server)
+- [3. How to query a model using OpenAI compatible API](#3-how-to-query-a-model-using-openai-compatible-api)
+- [4. How to query a running LLM providing custom context from pdf](#4-how-to-query-a-running-llm-providing-custom-context-from-pdf)
+- [5. How to start and agentic RAG session](#5-how-to-start-and-agentic-rag-session)
+- [6. Memvid (work in progress)](#6-memvid-work-in-progress)
 
-## 1. How to download, quantize and add a model to the models folder
+# 1. How to download, quantize and add a model to the models folder
 1. Download model folder (files + model.safetensor). To do this check [HuggingFace examples](https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct?clone=true). 
     Generally the fastest way to do it is to run:
 ```sh
@@ -23,7 +29,7 @@ run_llamacpp/models_gguf/SmolLM2-1.7B-Q6_K-Instruct.gguf Q6_K 8
 ```
 
 
-## 2. How to run llama-server
+# 2. How to run llama-server
 
 The following can be used to serve all the models locally available:
  ```sh
@@ -44,7 +50,7 @@ Use, instead, the following to run a model with llama-completion mode (see main.
 ./run_llamacpp/main.sh model=mistral7binstr_q4 prompt="Write a poem about space"
 ```
 
-## 3. How to query a model using OpenAI compatible API
+# 3. How to query a model using OpenAI compatible API
 
 The following, from the folder *chat_openai*, can be used to start an interactive sessione,
     with possibility to save/restart conversations:
@@ -53,7 +59,7 @@ The following, from the folder *chat_openai*, can be used to start an interactiv
 uv run chat.py  model=Qwen2.5-3B-Q6_K-Instruct
 ```
 
-## 4. How to query a running LLM providing custom context from pdf
+# 4. How to query a running LLM providing custom context from pdf
 
 1. If not running, start llama-server with decoder model and model embedding endpoints, if not running. Run postgres server, changing configurations if necessary.
 
@@ -77,7 +83,15 @@ python src/main.py --rag-mode=rrr
 
 To change rag parameters, used models and other configs, use the *config.yml* file.
 
-## 5. Memvid (work in progress)
+# 5. How to start and agentic RAG session
+
+The following can be used to start the agentic rag session, which has been constructed to avoid hallucination as much as possible. For details on the workflows structure, check the README in the *rag_langgraph* folder.
+```
+python rag_langgraph/src/main.py --ingest
+python rag_langgraph/src/main.py --query="Give me a biography of Lionel Messi"
+```
+
+# 6. Memvid (work in progress)
 
 Install the cli (for python sdk use the venv):
 ```
