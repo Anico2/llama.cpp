@@ -1,7 +1,7 @@
 services:
   pgvector:
     image: pgvector/pgvector:pg16
-    container_name: pgvector-container
+    container_name: pgvector-container-lc
     env_file:
       - .env
     environment:
