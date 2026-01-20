@@ -10,15 +10,15 @@ The engine is based on llama.cpp, used for running quantized llms, and an Intel-
 
 # 1. How to download, quantize and add a model to the models folder
 1. Download model folder (files + model.safetensor). To do this check [HuggingFace examples](https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct?clone=true). 
-    Generally the fastest way to do it is to run:
+    Generally the fastest way to download is to run (from run_llamacpp root):
 ```sh
-uvx hf download HuggingFaceTB/SmolLM2-1.7B-Instruct
+uvx hf download HuggingFaceTB/SmolLM2-1.7B-Instruct --local-dir ./models_gguf/tmp_downloaded/
 ```
 
-2. From run_llama.cpp root run:
+2. Still from run_llamacpp root run:
 ```sh
 uv run --with-requirements requirements/requirements-convert_hf_to_gguf.txt \
-python convert_hf_to_gguf.py SmolLM2-1.7B-Instruct --outfile models_gguf/SmolLM2-1.7B-Instruct.gguf
+python convert_hf_to_gguf.py models_gguf/tmp_downloaded/ --outfile models_gguf/SmolLM2-1.7B-Instruct.gguf
 ```
 
 3. Then quantize, using 8 threads, running the following (may need to first execute /opt/intel/oneapi/setvars.sh if using SYCL and check llama.cpp repo for alternative quantizations):
