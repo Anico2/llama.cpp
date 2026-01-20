@@ -1,1 +1,2 @@
-models_gguf/*.gguf
+models_gguf/*
+!models_gguf/README.md

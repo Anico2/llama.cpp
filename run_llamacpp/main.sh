@@ -18,6 +18,7 @@
 
 init_model_map() {
     MODEL_MAP=$(cat <<EOF
+### DECODERS ###
 llama2_q4:llama-2-7b.Q4_0.gguf
 llama3instr_q5:Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf
 mistral7binstr_q4:mistral-7b-instruct-v0.1.Q4_K_M.gguf
@@ -30,9 +31,10 @@ qwen_coder1.5b_q8:qwen2.5-coder-1.5b-q8_0.gguf
 qwen3vl_instr_4b_q4:Qwen3-VL-4B-Instruct-UD-Q4_K_XL.gguf
 qwen3vl_think_4b_q4:Qwen3-VL-4B-Thinking-UD-Q4_K_XL.gguf 
 
-# Embeddings
+### EMBEDDINGS ###
 nomic_embed:nomic-embed-text-v1.5.Q8_0.gguf
 bge_small:bge-small-en-v1.5.Q8_0.gguf
+snowflake_embed:snowflake-arctic-embed-m-v1.5.gguf
 EOF
 )
 }

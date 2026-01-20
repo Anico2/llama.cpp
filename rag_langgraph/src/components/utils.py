@@ -19,7 +19,7 @@ with open(PROJECT_ROOT / "config.yml") as f:
 
 llm = ChatOpenAI(
     base_url=os.environ["MODEL_ENDPOINT"],
-    api_key="sk-no-key-needed",
+    api_key=os.environ["MODEL_API_KEY"],
     model=cfg["llm"]["model"],
     temperature=0,
 )
@@ -27,7 +27,7 @@ llm = ChatOpenAI(
 embeddings_model = OpenAIEmbeddings(
         model=cfg["embeddings"]["model"],
         openai_api_base=os.environ["EMBEDDING_ENDPOINT"],
-        openai_api_key="sk-no-key-needed",
+        openai_api_key=os.environ["EMBEDDING_API_KEY"],
         tiktoken_enabled=False,
         check_embedding_ctx_length=False,
     )
