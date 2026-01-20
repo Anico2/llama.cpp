@@ -1,0 +1,13 @@
+.*
+!.gitignore
+
+uv.lock
+
+pgvector_data/*
+!pgvector_data/README.md
+
+documents/purchased/*
+!documents/purchased/README.md
+
+documents/free/*
+!documents/free/README.md
