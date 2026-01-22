@@ -5,12 +5,11 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
-from langchain_community.document_loaders import PyPDFium2Loader
+from langchain_community.document_loaders import PyPDFium2Loader, PDFPlumberLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_postgres import PGVector
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_classic.indexes import SQLRecordManager, index
 
 from pgvector_utils import check_pgvector_running
 from rag import (
@@ -20,7 +19,7 @@ from rag import (
     RouterRAGStrategy,
     RerankRAGStrategy,
 )
-from chunking import LLMSemanticChunker
+from chunking import LLMSemanticChunker, QAChunking, TableOfContentsChunker
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -72,6 +71,12 @@ def parse_args():
         help="Run document ingestion/indexing before querying.",
     )
     parser.add_argument(
+        "--pdf-read-mode",
+        choices=["single", "page"],
+        default="page",
+        help="PDF reading mode: 'single' reads entire PDF as one document; 'page' reads each page separately.",
+    )
+    parser.add_argument(
         "--rag-mode",
         choices=["simple", "rrr", "multi_query", "rerank", "auto"],
         default="simple",
@@ -83,24 +88,48 @@ def parse_args():
     )
     return parser.parse_args()
 
-def load_split_documents(pdf_dirs, cfg, llm):
+def load_split_documents(
+     cfg, llm, pdf_read_mode: str = "page", loader="pdfplumber"
+):
+    assert pdf_read_mode in ["single", "page"]
+
+    if pdf_read_mode == "single":
+        delim = "\n-------CUSTOM_END-------\n"
+    else:
+        delim = None
+
+    assert loader in ["pdfplumber", "pypdfium2"]
+
     raw_docs = []
-    for d in pdf_dirs:
+    for d in cfg["PDF_DIRS"]:
         path = Path(d)
         if not path.exists():
             continue
         for pdf_file in path.rglob("*.pdf"):
             try:
-                loader = PyPDFium2Loader(str(pdf_file))
+                if loader == "pdfplumber":
+                    loader = PDFPlumberLoader(str(pdf_file))
+                else:
+                    loader = PyPDFium2Loader(
+                        str(pdf_file), mode=pdf_read_mode, pages_delimiter=delim
+                    )
+                # more on https://docs.langchain.com/oss/python/integrations/document_loaders/pypdfium2
+
                 raw_docs.extend(loader.load())
             except Exception as e:
                 logger.error(f"Error loading {pdf_file}: {e}")
 
     chunk_strategy = cfg.get("chunk_strategy", "recursive")
 
+    assert chunk_strategy in ["qa", "recursive", "semantic", "toc"]
     if chunk_strategy == "semantic":
         logger.info("Using LLM-Native Semantic Chunking (slower)")
         splitter = LLMSemanticChunker(llm=llm)
+    elif chunk_strategy == "toc":
+        logger.info("Using Table of Contents Chunking")
+        splitter = TableOfContentsChunker(llm=llm, delim=delim)
+    elif chunk_strategy == "qa":
+        splitter = QAChunking(llm=llm)
     else:
         logger.info("Using Recursive Character Chunking...")
         splitter = RecursiveCharacterTextSplitter(**cfg["text_splitter"])
@@ -125,24 +154,16 @@ def main():
     # For efficiency, we optionally skip ingestion if not needed
     if args.ingest:
         logger.info("Starting ingestion...")
-        raw_docs, docs = load_split_documents(cfg["PDF_DIRS"], cfg, llm)
+        raw_docs, docs = load_split_documents(
+            cfg=cfg, 
+            llm=llm, 
+            pdf_read_mode=args.pdf_read_mode,
+            loader="pypdfium2"
+        )
         logger.info(f"Loaded {len(raw_docs)} docs → {len(docs)} chunks")
 
-        record_manager = SQLRecordManager(
-            f"pdf_namespace_{cfg['vectorstore']['collection_name']}",
-            db_url=os.environ["DATABASE_URL"],
-        )
-        record_manager.create_schema()
-
-        indexing_result = index(
-            docs,
-            record_manager,
-            vectorstore,
-            cleanup="incremental",
-            source_id_key="source",
-            key_encoder="sha256",
-        )
-        logger.info(f"Indexing Summary: {indexing_result}")
+        vectorstore.add_documents(documents=docs)
+        logger.info(f" added {len(docs) = }")
 
     search_kwargs = cfg["vectorstore"]["search_kwargs"]
     retriever = vectorstore.as_retriever(search_kwargs=search_kwargs)
@@ -200,19 +221,17 @@ def main():
             print("=" * 50)
 
             if result.get("context_used"):
-                print("Unique sources:")
-
-                seen_sources = set()
+                print("Sources:")
                 for doc in result["source_documents"]:
-                    src = os.path.basename(doc.metadata.get("source", "unknown"))
-                    page = doc.metadata.get("page", "?")
-                    source_line = f" - {src} (Page {page})"
-                    if source_line not in seen_sources:
-                        print(source_line)
-                        seen_sources.add(source_line)
+                    print(f"""{doc.metadata.get("source", "") = }""")
+                    print(f"""{doc.metadata.get("page", "") = }""")
+                    print(f"""{doc.metadata.get("toc_start_index", "") = }""")
+                    print(f"""{doc.metadata.get("toc_end_index", "") = }""")
+                    print(f"""{doc.metadata.get("section_length_chars", "") = }""")
+                    print(f"""{doc.metadata.get("section_num_pages", "") = }""")
+                    print("----")
             else:
                 print("Note: No relevant documents found in the database.")
-                
         except KeyboardInterrupt:
             break
         except Exception as e:

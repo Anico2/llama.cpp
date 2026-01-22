@@ -1,9 +1,10 @@
 # PDF directories to load
 PDF_DIRS:
-  - ./documents/free
+  - ./documents/stellantis
+  #- ./documents/free
   #- ./documents/purchased
 
-chunk_strategy: recursive # semantic or recursive
+chunk_strategy: toc #recursive #qa # semantic or recursive or qa
 
 # Text splitting
 text_splitter:
@@ -23,14 +24,14 @@ vectorstore:
 
 # LLM defaults
 llm:
-  model:  mistral-7b-instruct-v0.1.Q5_K_M 
+  model:  Meta-Llama-3.1-8B-Instruct-Q5_K_M
   temperature: 0
   chain_type: stuff
 embeddings:
-  model: nomic-embed-text-v1.5
+  model: all-MiniLM-L6-v2-ggml-model-f16 #snowflake-arctic-embed-m-v1.5 #nomic-embed-text-v1.5
 
 # Ragas evaluation settings
 evaluation:
   test_file_path: test_dataset.csv
   judge_llm:
-    model: mistral-7b-instruct-v0.1.Q5_K_M 
+    model: Meta-Llama-3.1-8B-Instruct-Q5_K_M
