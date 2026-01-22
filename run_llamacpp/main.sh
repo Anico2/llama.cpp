@@ -19,28 +19,31 @@
 init_model_map() {
     MODEL_MAP=$(cat <<EOF
 ### DECODERS ###
+gemma1b_f16:gemma-3-1b-it-f16.gguf
+gemma4b_q5:gemma-3-4b-it.Q5_K_M.gguf
+liquid25_f16:LFM2.5-1.2B-Instruct-F16.gguf
 llama2_q4:llama-2-7b.Q4_0.gguf
 llama3instr_q5:Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf
 mistral7binstr_q4:mistral-7b-instruct-v0.1.Q4_K_M.gguf
 mistral7binstr_q5:mistral-7b-instruct-v0.1.Q5_K_M.gguf
 qwen3b_q6:Qwen2.5-3B-Q6_K-Instruct.gguf
-smollm2_q6:SmolLM2-1.7B-Q6_K-Instruct.gguf
-gemma4b_q5:gemma-3-4b-it.Q5_K_M.gguf
-liquid25_f16:LFM2.5-1.2B-Instruct-F16.gguf
-qwen_coder1.5b_q8:qwen2.5-coder-1.5b-q8_0.gguf
+qwen3_06b_f16:Qwen3-0.6B-f16.gguf
 qwen3vl_instr_4b_q4:Qwen3-VL-4B-Instruct-UD-Q4_K_XL.gguf
 qwen3vl_think_4b_q4:Qwen3-VL-4B-Thinking-UD-Q4_K_XL.gguf 
+smollm2_q6:SmolLM2-1.7B-Instruct-Q6_K_L.gguf
 
 ### EMBEDDINGS ###
+allminil16_f16:all-MiniLM-L6-v2-ggml-model-f16.gguf
 nomic_embed:nomic-embed-text-v1.5.Q8_0.gguf
-bge_small:bge-small-en-v1.5.Q8_0.gguf
+qwen_reranker_q8:Qwen3-reranker-0.6b-q8_0.gguf
 snowflake_embed:snowflake-arctic-embed-m-v1.5.gguf
+
 EOF
 )
 }
 
 init_env_vars() {
-    export ONEAPI_DEVICE_SELECTOR="level_zero:0"
+    
     source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1
     
     # MEMORY AND PERFORMANCE RELATED VARS 
@@ -49,15 +52,16 @@ init_env_vars() {
     # Reduces CPU-GPU latency
     export SYCL_PI_LEVEL_ZERO_USE_IMMEDIATE_COMMANDLISTS=1 
     
+    export ONEAPI_DEVICE_SELECTOR="level_zero:0"  # we have only one GPU
 }
 
 init_defaults_params() {
     ## TODO: put this into external file ##
 
     ## Default models and related configurations ##
-    MODEL_KEY="mistral7binstr_q5"
+    MODEL_KEY="llama3instr_q5"
     EMBED_MODEL_KEY="nomic_embed"
-    CONTEXT=0 # 0 means that llama.cpp uses model default context size
+    CONTEXT=8192 # 0 means that llama.cpp uses model default context size
     PARALLEL=1 # real context becomes approximately -> CONTEXT / PARALLEL
                # so put this > 1 only if necessary
 
@@ -73,7 +77,10 @@ init_defaults_params() {
     SPLIT_MODE="none" # set to 'none' since we currently have 1 GPU only
     THREADS=4
     LLM_BATCH_SIZE=2048
-    LLM_UBATCH_SIZE=1024
+    LLM_UBATCH_SIZE=2048
+    EMBEDDING_BATCH_SIZE=2048
+    EMBEDDING_UBATCH_SIZE=2048
+    EMBEDDING_CONTEXT=2048
     ####
 
     ## Server ports ##
@@ -207,8 +214,11 @@ build_common_llama_args() {
         --threads \"$THREADS\"
         --batch-size "$LLM_BATCH_SIZE"
         --ubatch-size "$LLM_UBATCH_SIZE"
-        --flash-attn off # currently flash-attn has issues on Intel GPUs
+        --flash-attn on # currently flash-attn has issues on Intel GPUs (need to put to on for: smoll/llamainst)
         --parallel "$PARALLEL"
+        --cache-type-k q8_0
+        --cache-type-v q8_0
+        --verbose
         
     )"
 }
@@ -247,16 +257,19 @@ build_server_plus_embed_cmds() {
         "$LLAMA_BIN"
         --model "$EMBED_MODEL_PATH"
         --embedding
-        --ctx-size 8192
+        --ctx-size "$EMBEDDING_CONTEXT"
         --gpu-layers "$NGL"
         --main-gpu "$GPU"
         --split-mode "$SPLIT_MODE"
         --threads "$THREADS"
         --port "$EMBEDDING_LLM_PORT"
-        --batch-size 2048
-        --ubatch-size 2048
+        --batch-size "$EMBEDDING_BATCH_SIZE"
+        --ubatch-size "$EMBEDDING_UBATCH_SIZE"
         --pooling mean
+        --cache-type-k f32 
+        --cache-type-v f32 
         --no-webui
+        --flash-attn on
     )
 }
 
