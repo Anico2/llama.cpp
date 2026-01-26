@@ -23,7 +23,8 @@ gemma1b_f16:gemma-3-1b-it-f16.gguf
 gemma4b_q5:gemma-3-4b-it.Q5_K_M.gguf
 liquid25_f16:LFM2.5-1.2B-Instruct-F16.gguf
 llama2_q4:llama-2-7b.Q4_0.gguf
-llama3instr_q5:Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf
+llama31instr_q5:Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf
+llama32instr_q8:Llama-3.2-3B-Instruct-Q8_0.gguf
 mistral7binstr_q4:mistral-7b-instruct-v0.1.Q4_K_M.gguf
 mistral7binstr_q5:mistral-7b-instruct-v0.1.Q5_K_M.gguf
 qwen3b_q6:Qwen2.5-3B-Q6_K-Instruct.gguf
@@ -59,9 +60,9 @@ init_defaults_params() {
     ## TODO: put this into external file ##
 
     ## Default models and related configurations ##
-    MODEL_KEY="llama3instr_q5"
+    MODEL_KEY="llama31instr_q5"
     EMBED_MODEL_KEY="nomic_embed"
-    CONTEXT=8192 # 0 means that llama.cpp uses model default context size
+    CONTEXT=16384 # 0 means that llama.cpp uses model default context size
     PARALLEL=1 # real context becomes approximately -> CONTEXT / PARALLEL
                # so put this > 1 only if necessary
 
