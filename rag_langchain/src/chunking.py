@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.output_parsers import JsonOutputParser
-logger = logging.getLogger("Chunking")
+logger = logging.getLogger(__name__)
 
 class ChunkSchema(BaseModel):
     headline: str = Field(description="Brief heading for this chunk")

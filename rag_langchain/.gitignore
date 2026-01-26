@@ -11,3 +11,7 @@ documents/purchased/*
 
 documents/free/*
 !documents/free/README.md
+
+evals/*
+!evals/README.md
+!evals/read_results.ipynb

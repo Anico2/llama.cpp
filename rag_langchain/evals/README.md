@@ -1,0 +1,1 @@
+Folder for storing evaluation scripts and results for RAG LangChain project.

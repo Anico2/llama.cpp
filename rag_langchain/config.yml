@@ -4,7 +4,7 @@ PDF_DIRS:
   #- ./documents/free
   #- ./documents/purchased
 
-chunk_strategy: toc #recursive #qa # semantic or recursive or qa
+chunk_strategy: toc # recursive #qa # semantic or recursive or qa
 
 # Text splitting
 text_splitter:
@@ -20,7 +20,7 @@ text_splitter:
 vectorstore:
   collection_name: documents
   search_kwargs:
-    k: 3 # how many documents to retrieve
+    k: 2 # how many documents to retrieve
 
 # LLM defaults
 llm:

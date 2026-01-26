@@ -1,252 +1,143 @@
-"""
-rag.py
-"""
 
 import logging
-import time
-import json
-from abc import ABC, abstractmethod
-from typing import Literal, Dict, List
-from functools import wraps
+from pathlib import Path
 
+from langchain_community.document_loaders import PyPDFium2Loader, PDFPlumberLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from pydantic import BaseModel, Field
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
+from pgvector_utils import check_pgvector_running
+from strategies import (
+    SimpleRAGStrategy,
+    RRRStrategy,
+    MultiQueryRAGStrategy,
+    RouterRAGStrategy,
+    RerankRAGStrategy,
 )
-logger = logging.getLogger("RAG-System")
+from chunking import LLMSemanticChunker, QAChunking, TableOfContentsChunker
+from utils import get_model_classes, get_vectorstore
 
-def log_execution(func):
-    """Decorator to log function name and execution time."""
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        start_time = time.time()
-        strategy_name = args[0].__class__.__name__
-        logger.info(f"Starting {strategy_name} for query...")
-        result = func(*args, **kwargs)
-        duration = time.time() - start_time
-        logger.info(f"{strategy_name} finished in {duration:.2f}s")
-        return result
-    return wrapper
+logger = logging.getLogger(__name__)
 
-class BaseRAGStrategy(ABC):
-    @abstractmethod
-    def answer(self, query: str) -> dict:
-        pass
+PROJECT_ROOT = Path(__file__).parent.parent
 
-class SimpleRAGStrategy(BaseRAGStrategy):
-    def __init__(self, retriever, llm, prompt):
-        self.retriever = retriever
-        self.llm = llm
-        self.prompt = prompt
 
-    @log_execution
-    def answer(self, query: str) -> dict:
-        docs = self.retriever.invoke(query)
-        logger.info(f"Retrieved {len(docs)} documents.")
-        context_text = "\n\n".join([d.page_content for d in docs])
-        chain = self.prompt | self.llm | StrOutputParser()
-        answer_text = chain.invoke({"context": context_text, "question": query})
 
-        return {
-            "answer": answer_text,
-            "source_documents": docs,
-            "context_used": len(docs) > 0,
-        }
+def load_split_documents(
+     cfg, llm, pdf_read_mode: str = "page", loader="pdfplumber"
+):
+    assert pdf_read_mode in ["single", "page"]
 
-class RRRStrategy(BaseRAGStrategy):
-    def __init__(self, retriever, llm, prompt, cache=True):
-        self.retriever = retriever
-        self.llm = llm
-        self.prompt = prompt
-        self.cache_rewrites = cache
-        self._rewrite_cache = {}
-        self.rewrite_prompt = ChatPromptTemplate.from_template(
-            "Rewrite the input query to improve clarity for search retrieval. Keep it concise.\nInput: {x}\nRewritten:"
-        )
-        self.rewriter_chain = self.rewrite_prompt | self.llm | StrOutputParser()
+    if pdf_read_mode == "single":
+        delim = "\n-------CUSTOM_END-------\n"
+    else:
+        delim = None
 
-    @log_execution
-    def answer(self, query: str) -> dict:
-        if self.cache_rewrites and query in self._rewrite_cache:
-            rewritten_query = self._rewrite_cache[query]
-            logger.info("Using cached rewrite.")
-        else:
-            rewritten_query = (
-                self.rewriter_chain.invoke({"x": query})
-                .replace("Rewritten:", "")
-                .strip()
-            )
-            self._rewrite_cache[query] = rewritten_query
-            logger.info(f"Query rewritten: '{query}' -> '{rewritten_query}'")
+    assert loader in ["pdfplumber", "pypdfium2"]
 
-        docs = self.retriever.invoke(rewritten_query)
-        context_text = "\n\n".join([d.page_content for d in docs])
-        chain = self.prompt | self.llm | StrOutputParser()
-        answer_text = chain.invoke({"context": context_text, "question": query})
+    raw_docs = []
+    for d in cfg["PDF_DIRS"]:
+        path = Path(d)
+        if not path.exists():
+            continue
+        for pdf_file in path.rglob("*.pdf"):
+            try:
+                if loader == "pdfplumber":
+                    loader = PDFPlumberLoader(str(pdf_file))
+                else:
+                    loader = PyPDFium2Loader(
+                        str(pdf_file), mode=pdf_read_mode, pages_delimiter=delim
+                    )
+                # more on https://docs.langchain.com/oss/python/integrations/document_loaders/pypdfium2
 
-        return {
-            "answer": answer_text,
-            "source_documents": docs,
-            "context_used": len(docs) > 0,
-        }
+                raw_docs.extend(loader.load())
+            except Exception as e:
+                logger.error(f"Error loading {pdf_file}: {e}")
 
-class MultiQueryRAGStrategy(BaseRAGStrategy):
-    def __init__(self, retriever, llm, prompt, num_queries=3):
-        self.retriever = retriever
-        self.llm = llm
-        self.prompt = prompt
-        self.num_queries = num_queries
+    chunk_strategy = cfg.get("chunk_strategy", "recursive")
 
-        self.perspectives_prompt = ChatPromptTemplate.from_template(
-            f"Generate {self.num_queries} varied search queries based on: {{question}}. Return only the queries separated by newlines."
-        )
+    assert chunk_strategy in ["qa", "recursive", "semantic", "toc"]
+    if chunk_strategy == "semantic":
+        logger.info("Using LLM-Native Semantic Chunking (slower)")
+        splitter = LLMSemanticChunker(llm=llm)
+    elif chunk_strategy == "toc":
+        logger.info("Using Table of Contents Chunking")
+        splitter = TableOfContentsChunker(llm=llm, delim=delim)
+    elif chunk_strategy == "qa":
+        splitter = QAChunking(llm=llm)
+    else:
+        logger.info("Using Recursive Character Chunking...")
+        splitter = RecursiveCharacterTextSplitter(**cfg["text_splitter"])
 
-    def get_unique_union(self, document_lists):
-        deduped_docs = {}
-        for sublist in document_lists:
-            for doc in sublist:
-                if doc.page_content not in deduped_docs:
-                    deduped_docs[doc.page_content] = doc
-        return list(deduped_docs.values())
+    docs = splitter.split_documents(raw_docs)
 
-    @log_execution
-    def answer(self, query: str) -> dict:
-        logger.info("Generating sub-queries...")
-        query_gen_chain = self.perspectives_prompt | self.llm | StrOutputParser()
-        raw_output = query_gen_chain.invoke({"question": query})
-        queries = [q.strip() for q in raw_output.split("\n") if q.strip()]
-        # Limit distinct queries to avoid flooding
-        queries = queries[: self.num_queries]
-        logger.info(f"Sub-queries: {queries}")
-        doc_lists = [self.retriever.invoke(q) for q in queries]
-        combined_docs = self.get_unique_union(doc_lists)
-        logger.info(f"Unique docs found: {len(combined_docs)}")
-        context_text = "\n\n".join([d.page_content for d in combined_docs])
-        chain = self.prompt | self.llm | StrOutputParser()
-        answer_text = chain.invoke({"context": context_text, "question": query})
+    for d in docs:
+        d.metadata.setdefault("source", d.metadata.get("source", "unknown"))
 
-        return {
-            "answer": answer_text,
-            "source_documents": combined_docs,
-            "context_used": len(combined_docs) > 0,
-        }
+    return raw_docs, docs
 
-class RelevanceScore(BaseModel):
-    id: int
-    relevance_score: int = Field(
-        description="Score from 0-10, where 10 is highly relevant"
+def rag_ingest(cfg, llm, vectorstore):
+    logger.info("Starting ingestion...")
+    raw_docs, docs = load_split_documents(
+        cfg=cfg, 
+        llm=llm, 
+        pdf_read_mode=cfg["pdf_read_mode"],
+        loader="pypdfium2"
     )
-    reasoning: str = Field(description="Brief reason for the score")
+    logger.info(f"Loaded {len(raw_docs)} docs → {len(docs)} chunks")
 
-class RankedDocs(BaseModel):
-    rankings: List[RelevanceScore]
+    vectorstore.add_documents(documents=docs)
+    logger.info(f"Ingestion complete. Added {len(docs) = } to vectorstore.")
 
-class RerankRAGStrategy(BaseRAGStrategy):
-    """
-    Retrieves a k set of documents (as put in the passed retriever),
-    then uses the LLM to score/rank them.
-    """
+def prompt_template():
+    return ChatPromptTemplate.from_template(
+        """Answer the question enclosed in parentheses based on the context provided.
+        If the context is irrelevant or empty, answer based on your own knowledge 
+        but mention that the provided context was insufficient.
 
-    def __init__(self, retriever, llm, prompt, top_k=2):
-        self.retriever = retriever
-        self.llm = llm
-        self.prompt = prompt
-        self.top_k = top_k
-
-    @log_execution
-    def answer(self, query: str) -> dict:
-        # 1. Retrieve Candidate Pool
-
-        candidates = self.retriever.invoke(query)
-        logger.info(f"Retrieved {len(candidates)} candidates for reranking.")
-
-        if not candidates:
-            return {
-                "answer": "No documents found.",
-                "source_documents": [],
-                "context_used": False,
-            }
-
-        # 2. Rerank using LLM
-        snippets = []
-        for idx, doc in enumerate(candidates):
-            # Truncate content for reranking speed
-            content_preview = doc.page_content[:400].replace("\n", " ")
-            snippets.append(f"ID: {idx}\nContent: {content_preview}")
-
-        snippets_text = "\n\n".join(snippets)
-
-        rerank_prompt = f"""
-        You are a relevance ranker.
-        Question: {query}
-        
-        Documents:
-        {snippets_text}
-        
-        Task: return a JSON object with a list 'rankings'. 
-        Each item must have 'id' (int) and 'relevance_score' (0-10).
-        Only include documents with score > 3.
+        Context: {context}
+        \n\n\n
+        Question: {question}
         """
-
-        try:
-            ranker = self.llm.with_structured_output(RankedDocs)
-            result = ranker.invoke(rerank_prompt)
-
-            # Sort by score desc
-            sorted_ranks = sorted(
-                result.rankings, key=lambda x: x.relevance_score, reverse=True
-            )
-
-            top_ids = [r.id for r in sorted_ranks[: self.top_k]]
-            final_docs = [candidates[i] for i in top_ids if i < len(candidates)]
-
-            logger.info(
-                f"Reranked: Kept {len(final_docs)} top docs out of {len(candidates)}."
-            )
-
-        except Exception as e:
-            logger.error(
-                f"Reranking failed: {e}. Falling back to top {self.top_k} raw results."
-            )
-            final_docs = candidates[: self.top_k]
-
-        # 3. Generate Answer
-        context_text = "\n\n".join([d.page_content for d in final_docs])
-        chain = self.prompt | self.llm | StrOutputParser()
-        answer_text = chain.invoke({"context": context_text, "question": query})
-
-        return {
-            "answer": answer_text,
-            "source_documents": final_docs,
-            "context_used": len(final_docs) > 0,
-        }
-
-
-class RouteChoice(BaseModel):
-    choice: Literal["simple", "multi_query", "rrr", "rerank"] = Field(
-        description="Choose the best strategy based on question complexity."
     )
 
+def get_strategy_instances(cfg, llm, vectorstore):
+    # Collect all available strategies here. If user passes auto mode,
+    # the llm will pick the best strategy based on question complexity.
+    k = cfg["vectorstore"]["search_kwargs"].get("k", 4)
+    logger.info(f"Using top-{k} documents for retrieval.")
+    retriever = vectorstore.as_retriever(search_kwargs={"k": k})
+    common = {"retriever": retriever, "llm": llm, "prompt": prompt_template()}
+    strategy_instances = {
+        "simple": SimpleRAGStrategy(**common),
+        "rrr": RRRStrategy(**common, cache=not cfg["no_cache"]),
+        "multi_query": MultiQueryRAGStrategy(**common),
+        "rerank": RerankRAGStrategy(**common),
+    }
 
-class RouterRAGStrategy(BaseRAGStrategy):
-    def __init__(self, strategies: Dict[str, BaseRAGStrategy], llm):
-        self.strategies = strategies
-        self.llm = llm
+    logger.info(f"RAG Mode: {cfg['rag_mode'].upper()}")
 
-    @log_execution
-    def answer(self, query: str) -> dict:
-        router_llm = self.llm.with_structured_output(RouteChoice)
-        try:
-            route = router_llm.invoke(f"Route this question: {query}")
-            choice = route.choice
-        except Exception:
-            # we fall back to simple if routing fails
-            choice = "simple"
+    if cfg["rag_mode"] == "auto":
+        rag = RouterRAGStrategy(strategies=strategy_instances, llm=llm)
+    else:
+        # Check if the user requested a mode that isn't instantiated
+        if cfg["rag_mode"] not in strategy_instances:
+            logger.warning(f"Mode {cfg['rag_mode']} not found, defaulting to simple")
+            rag = strategy_instances["simple"]
+        else:
+            rag = strategy_instances[cfg["rag_mode"]]
 
-        logger.info(f"Routing to '{choice}' strategy.")
-        return self.strategies[choice].answer(query)
+    return rag
+
+def rag_system(cfg):
+    check_pgvector_running(start_if_missing=False)
+
+    llm, embeddings = get_model_classes(cfg)
+
+    vectorstore = get_vectorstore(cfg, embeddings)
+
+    if cfg["ingest"]:
+        rag_ingest(cfg, llm, vectorstore)
+    
+    rag = get_strategy_instances(cfg, llm, vectorstore=vectorstore)
+
+    return rag
