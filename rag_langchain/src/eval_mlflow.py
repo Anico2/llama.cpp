@@ -59,7 +59,48 @@ samples = [
             "answer": "Management concluded that due to limited availability of hydrogen refueling infrastructure, high capital requirements, and the need for stronger consumer purchasing incentives, the adoption of hydrogen-powered light commercial vehicles would not happen before the end of the decade. [cite_start]Consequently, they discontinued the program, resulting in significant impairments and charges totaling over €733 million, including the impairment of the Symbio joint venture."
         },
     },
+    {
+        "inputs": {
+            "question": "What were the Net Revenues for Stellantis in H1 2025 compared to H1 2024?"
+        },
+        "expectations": {
+            "answer": "- H1 2025 Net revenues were €74,261 million\n- H1 2024 Net revenues were €85,017 million\n- This represents a decrease of 12.7%"
+        },
+    },
+    {
+        "inputs": {
+            "question": "Why did Stellantis discontinue its hydrogen fuel cell technology program in 2025?"
+        },
+        "expectations": {
+            "answer": "- Limited availability of hydrogen refueling infrastructure\n- High capital requirements\n- The need for stronger consumer purchasing incentives"
+        },
+    },
+    {
+        "inputs": {
+            "question": "What factors caused the decrease in North America's Adjusted Operating Income in H1 2025?"
+        },
+        "expectations": {
+            "answer": "- Significant unfavorable impacts from volume and mix\n- Increased sales incentives\n- Unfavorable variable cost absorption and warranty costs"
+        },
+    },
+    {
+        "inputs": {
+            "question": "How did the 'One Big Beautiful Bill Act' (OBBB) impact Stellantis' CAFE penalty provisions?"
+        },
+        "expectations": {
+            "answer": "- The act eliminated CAFE fines/penalties (revised rate to $0.00)\n- Resulted in a net expense of €269 million\n- Comprised of: impairment of regulatory credit assets (€609m), onerous contracts (€504m), offset by elimination of CAFE provision (€844m) [cite: 1338, 1339]"
+        },
+    },
+    {
+        "inputs": {
+            "question": "What was the Industrial Free Cash Flow for the first half of 2025?"
+        },
+        "expectations": {
+            "answer": "- Net cash absorption (negative) of €3,005 million\n- This is a decrease of €2,613 million compared to H1 2024"
+        },
+    },
 ]
+
 
 
 def eval_mlflow_main(cfg):
