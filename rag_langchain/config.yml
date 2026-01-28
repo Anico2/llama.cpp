@@ -35,3 +35,7 @@ evaluation:
   test_file_path: test_dataset.csv
   judge_llm:
     model: Meta-Llama-3.1-8B-Instruct-Q5_K_M
+
+# litellm
+litellm:
+  enabled: False

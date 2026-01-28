@@ -15,3 +15,5 @@ documents/free/*
 evals/*
 !evals/README.md
 !evals/read_results.ipynb
+
+mlflow/*
