@@ -4,7 +4,6 @@ rag.py
 
 import logging
 import time
-import json
 from abc import ABC, abstractmethod
 from typing import Literal, Dict, List
 from functools import wraps
@@ -34,7 +33,7 @@ def log_execution(func):
 
 class BaseRAGStrategy(ABC):
     @abstractmethod
-    def answer(self, query: str) -> dict:
+    def answer(self, query: str, callbacks=None) -> dict:
         pass
 
 
@@ -45,14 +44,17 @@ class SimpleRAGStrategy(BaseRAGStrategy):
         self.prompt = prompt
 
     @log_execution
-    def answer(self, query: str) -> dict:
-        docs = self.retriever.invoke(query)
+    def answer(self, query: str, callbacks=None) -> dict:
+        docs = self.retriever.invoke(query, config={"callbacks": callbacks})
         # send to llm just the first document
         docs_ = docs[:1]
         logger.info(f"Retrieved {len(docs)} documents. Sending {len(docs_)} to LLM.")
         context_text = "\n\n".join([d.page_content for d in docs_])
         chain = self.prompt | self.llm | StrOutputParser()
-        answer_text = chain.invoke({"context": context_text, "question": query})
+        answer_text = chain.invoke(
+            {"context": context_text, "question": query},
+            config={"callbacks": callbacks},
+        )
 
         return {
             "answer": answer_text,
@@ -78,13 +80,15 @@ class RRRStrategy(BaseRAGStrategy):
         self.rewriter_chain = self.rewrite_prompt | self.llm | StrOutputParser()
 
     @log_execution
-    def answer(self, query: str) -> dict:
+    def answer(self, query: str, callbacks=None) -> dict:
         if self.cache_rewrites and query in self._rewrite_cache:
             rewritten_query = self._rewrite_cache[query]
             logger.info("Using cached rewrite.")
         else:
             rewritten_query = (
-                self.rewriter_chain.invoke({"x": query})
+                self.rewriter_chain.invoke(
+                    {"x": query}, config={"callbacks": callbacks}
+                )
                 .replace("Rewritten:", "")
                 .strip()
             )
@@ -93,10 +97,10 @@ class RRRStrategy(BaseRAGStrategy):
                 f"Original query: \n<{query}>, \n\n Rewritten query: \n <{rewritten_query}>"
             )
 
-        docs = self.retriever.invoke(rewritten_query)
+        docs = self.retriever.invoke(rewritten_query, config={"callbacks": callbacks})
         context_text = "\n\n".join([d.page_content for d in docs])
         chain = self.prompt | self.llm | StrOutputParser()
-        answer_text = chain.invoke({"context": context_text, "question": query})
+        answer_text = chain.invoke({"context": context_text, "question": query}, config={"callbacks": callbacks})
 
         return {
             "answer": answer_text,
@@ -125,20 +129,22 @@ class MultiQueryRAGStrategy(BaseRAGStrategy):
         return list(deduped_docs.values())
 
     @log_execution
-    def answer(self, query: str) -> dict:
+    def answer(self, query: str, callbacks=None) -> dict:
         logger.info("Generating sub-queries...")
         query_gen_chain = self.perspectives_prompt | self.llm | StrOutputParser()
-        raw_output = query_gen_chain.invoke({"question": query})
+        raw_output = query_gen_chain.invoke(
+            {"question": query}, config={"callbacks": callbacks}
+        )
         queries = [q.strip() for q in raw_output.split("\n") if q.strip()]
         # Limit distinct queries to avoid flooding
         queries = queries[: self.num_queries]
         logger.info(f"Sub-queries: {queries}")
-        doc_lists = [self.retriever.invoke(q) for q in queries]
+        doc_lists = [self.retriever.invoke(q, config={"callbacks": callbacks}) for q in queries]
         combined_docs = self.get_unique_union(doc_lists)
         logger.info(f"Unique docs found: {len(combined_docs)}")
         context_text = "\n\n".join([d.page_content for d in combined_docs])
         chain = self.prompt | self.llm | StrOutputParser()
-        answer_text = chain.invoke({"context": context_text, "question": query})
+        answer_text = chain.invoke({"context": context_text, "question": query}, config={"callbacks": callbacks})
 
         return {
             "answer": answer_text,
@@ -172,10 +178,10 @@ class RerankRAGStrategy(BaseRAGStrategy):
         self.top_k = top_k
 
     @log_execution
-    def answer(self, query: str) -> dict:
+    def answer(self, query: str, callbacks=None) -> dict:
         # 1. Retrieve Candidate Pool
 
-        candidates = self.retriever.invoke(query)
+        candidates = self.retriever.invoke(query, config={"callbacks": callbacks})
         logger.info(f"Retrieved {len(candidates)} candidates for reranking.")
 
         if not candidates:
@@ -208,7 +214,7 @@ class RerankRAGStrategy(BaseRAGStrategy):
 
         try:
             ranker = self.llm.with_structured_output(RankedDocs)
-            result = ranker.invoke(rerank_prompt)
+            result = ranker.invoke(rerank_prompt, config={"callbacks": callbacks})
 
             # Sort by score desc
             sorted_ranks = sorted(
@@ -231,7 +237,7 @@ class RerankRAGStrategy(BaseRAGStrategy):
         # 3. Generate Answer
         context_text = "\n\n".join([d.page_content for d in final_docs])
         chain = self.prompt | self.llm | StrOutputParser()
-        answer_text = chain.invoke({"context": context_text, "question": query})
+        answer_text = chain.invoke({"context": context_text, "question": query}, config={"callbacks": callbacks})
 
         return {
             "answer": answer_text,
@@ -252,10 +258,12 @@ class RouterRAGStrategy(BaseRAGStrategy):
         self.llm = llm
 
     @log_execution
-    def answer(self, query: str) -> dict:
+    def answer(self, query: str, callbacks=None) -> dict:
         router_llm = self.llm.with_structured_output(RouteChoice)
         try:
-            route = router_llm.invoke(f"Route this question: {query}")
+            route = router_llm.invoke(
+                f"Route this question: {query}", config={"callbacks": callbacks}
+            )
             choice = route.choice
         except Exception:
             # we fall back to simple if routing fails

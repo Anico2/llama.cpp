@@ -2,11 +2,15 @@ import sys
 import logging
 import asyncio
 import datetime
-from utils import load_env_config, parse_args
-from rag import rag_system
+
+from langfuse import get_client
+from langfuse.langchain import CallbackHandler
+
 from eval_ragas import eval_ragas_main
 from eval_mlflow import eval_mlflow_main
-import mlflow
+from rag import rag_system
+from services import services_handler
+from utils import load_env_config, parse_args
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -14,24 +18,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def mlflow_setup(cfg):
-    try:
-        mlflow.set_tracking_uri(cfg["MLFLOW_TRACKING_URI"])
-        mlflow.set_experiment(cfg["experiment"])
-        mlflow.openai.autolog()
-        mlflow.langchain.autolog()
-        logger.info(f"MLflow running! URI: {cfg['MLFLOW_TRACKING_URI']}")
-    except Exception:
-        logger.error("Failed to set MLflow tracking URI or enable autologging.")
-
-
 def main_rag(cfg):
+    try:
+        _ = get_client()
+        langfuse_handler = CallbackHandler()
+    except Exception as e:
+        print(e)
+        logger.error("Failed to use Langfuse.")
+        langfuse_handler = None
+
     rag = rag_system(cfg)
 
     print(f"\n--- RAG Pipeline Ready [{cfg['rag_mode']}] ---")
 
     if not cfg["interactive"]:
-        return rag.answer(cfg["query"])
+        return rag.answer(cfg["query"], callbacks=[langfuse_handler])
 
     while True:
         try:
@@ -41,7 +42,7 @@ def main_rag(cfg):
             if not q:
                 continue
 
-            result = rag.answer(q)
+            result = rag.answer(q, callbacks=[langfuse_handler])
 
             print("\n" + "=" * 20 + " ANSWER " + "=" * 20)
             print(result["answer"])
@@ -63,6 +64,7 @@ def main_rag(cfg):
         except Exception as e:
             logger.error(f"Error during query: {e}")
 
+
 if __name__ == "__main__":
     cfg, args = load_env_config(), parse_args()
     cfg = {**cfg, **vars(args)}  # put evertyhing in one dict only
@@ -70,16 +72,23 @@ if __name__ == "__main__":
     datatime_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     cfg["experiment"] = f"{cfg['task']}_{datatime_str}"
 
-    mlflow_setup(cfg)
+    with services_handler(
+        cfg,
+        suppress_out=True,
+        stop_all=True,
+        stop_langfuse=False,
+        stop_mlflow=False,
+        stop_llama_server=False,
+        stop_pgvector=False
+    ):
+        if cfg["task"] == "rag":
+            cfg["interactive"] = True
+            main_rag(cfg)
+            sys.exit(0)
 
-    if cfg["task"] == "rag":
-        cfg["interactive"] = True
-        main_rag(cfg)
-        sys.exit(0)
-
-    if cfg["task"] == "eval[ragas]":
-        res = asyncio.run(eval_ragas_main(cfg))
-        res.save()
-    else:
-        res = eval_mlflow_main(cfg)
-        print(res)
+        if cfg["task"] == "eval[ragas]":
+            res = asyncio.run(eval_ragas_main(cfg))
+            res.save()
+        else:
+            res = eval_mlflow_main(cfg)
+            print(res)

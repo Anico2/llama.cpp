@@ -78,8 +78,14 @@ source .venv/bin/activate
 embedded from *documents* folder. Use rag-mode to choose the rag strategy (Rewrite-Retrieve-Read in the following example):
 
 ```sh
-python src/main.py --rag-mode=rrr
+uv run python src/main.py --task=rag --rag-mode=rrr --pdf-read-mode=page
 ```
+*NOTE*: the above script will start, if not running yet, the following services:
+- llama-server (for model serving)
+- mlflow (for eval tracking)
+- pgvector (for embedding)
+- langfuse (for inference monitoring)
+- litellm (WORK IN PROGRESS)
 
 To change rag parameters, used models and other configs, use the *config.yml* file.
 

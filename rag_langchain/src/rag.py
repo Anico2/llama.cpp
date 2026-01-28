@@ -5,7 +5,6 @@ from pathlib import Path
 from langchain_community.document_loaders import PyPDFium2Loader, PDFPlumberLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
-from pgvector_utils import check_pgvector_running
 from strategies import (
     SimpleRAGStrategy,
     RRRStrategy,
@@ -129,7 +128,6 @@ def get_strategy_instances(cfg, llm, vectorstore):
     return rag
 
 def rag_system(cfg):
-    check_pgvector_running(start_if_missing=False)
 
     llm, embeddings = get_model_classes(cfg)
 
