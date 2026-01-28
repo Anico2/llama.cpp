@@ -3,26 +3,42 @@ import yaml
 from pathlib import Path
 from dotenv import load_dotenv
 import argparse
+
+
 from langchain_postgres import PGVector
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_milvus import Milvus
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-
+from langchain_litellm import ChatLiteLLM
 from ragas.llms import llm_factory
 from ragas.embeddings.base import embedding_factory
 from openai import AsyncOpenAI
+
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
 
 def get_model_classes(cfg, llm_model=None, embedding_model=None):
     llm_model = llm_model if llm_model else cfg["llm"]["model"]
-    llm = ChatOpenAI(
-        model=llm_model,
-        temperature=cfg["llm"].get("temperature", 0),
-        openai_api_base=os.environ["MODEL_ENDPOINT"],
-        openai_api_key=os.environ["MODEL_API_KEY"],
-    )
+    if cfg["litellm"]["enabled"]:
+        litellm_failed = False
+        try:
+            llm = ChatLiteLLM(
+                model=llm_model,
+                temperature=cfg["llm"].get("temperature", 0),
+                api_base=os.environ["MODEL_ENDPOINT_LITELLM"],
+                api_key=os.environ["MODEL_API_KEY"],
+            )
+        except Exception as e:
+            print(e)
+            litellm_failed = True
+    if not cfg["litellm"]["enabled"] or (cfg["litellm"]["enabled"] and litellm_failed):
+        llm = ChatOpenAI(
+            model=llm_model,
+            temperature=cfg["llm"].get("temperature", 0),
+            openai_api_base=os.environ["MODEL_ENDPOINT"],
+            openai_api_key=os.environ["MODEL_API_KEY"],
+        )
     embedding_model = embedding_model if embedding_model else cfg["embeddings"]["model"]
     embeddings = OpenAIEmbeddings(
         model=embedding_model,
@@ -40,7 +56,7 @@ def get_vectorstore(cfg, embeddings, vectorstore_type="pgvector"):
         return PGVector(
             embeddings=embeddings,
             collection_name=cfg["vectorstore"]["collection_name"],
-            connection=os.environ["DATABASE_URL"],
+            connection=os.environ["PG_VECTOR_DB_URL_"],
             use_jsonb=True,
         )
     if vectorstore_type == "inmemory":
@@ -128,10 +144,8 @@ def get_eval_model_classes(llm_model=None, embedding_model=None, async_mode=True
     llm_model = llm_model if llm_model else "gpt-4o-mini"
     llm = llm_factory(model=llm_model, client=client)
 
-    
     embedding_model = embedding_model if embedding_model else "text-embedding-3-small"
 
-    
     lc_embeddings = AsyncOpenAI(
         api_key=os.environ["EMBEDDING_API_KEY"],
         base_url=os.environ["EMBEDDING_ENDPOINT"],
