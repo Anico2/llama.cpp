@@ -29,8 +29,6 @@ mistral7binstr_q4:mistral-7b-instruct-v0.1.Q4_K_M.gguf
 mistral7binstr_q5:mistral-7b-instruct-v0.1.Q5_K_M.gguf
 qwen3b_q6:Qwen2.5-3B-Q6_K-Instruct.gguf
 qwen3_06b_f16:Qwen3-0.6B-f16.gguf
-qwen3vl_instr_4b_q4:Qwen3-VL-4B-Instruct-UD-Q4_K_XL.gguf
-qwen3vl_think_4b_q4:Qwen3-VL-4B-Thinking-UD-Q4_K_XL.gguf 
 smollm2_q6:SmolLM2-1.7B-Instruct-Q6_K_L.gguf
 
 ### EMBEDDINGS ###
@@ -49,11 +47,14 @@ init_env_vars() {
     
     # MEMORY AND PERFORMANCE RELATED VARS 
     export UR_L0_ENABLE_RELAXED_ALLOCATION_LIMITS=1
+    set UR_L0_ENABLE_RELAXED_ALLOCATION_LIMITS=1
     export ZES_ENABLE_SYSMAN=1
+    set ZES_ENABLE_SYSMAN=1
     # Reduces CPU-GPU latency
     export SYCL_PI_LEVEL_ZERO_USE_IMMEDIATE_COMMANDLISTS=1 
-    
+    set SYCL_PI_LEVEL_ZERO_USE_IMMEDIATE_COMMANDLISTS=1 
     export ONEAPI_DEVICE_SELECTOR="level_zero:0"  # we have only one GPU
+    set ONEAPI_DEVICE_SELECTOR="level_zero:0"
 }
 
 init_defaults_params() {
@@ -204,6 +205,8 @@ add_model_arg() {
     fi
 }
 
+
+
 build_common_llama_args() {
     local _cmd_ref=$1
 
@@ -215,11 +218,15 @@ build_common_llama_args() {
         --threads \"$THREADS\"
         --batch-size "$LLM_BATCH_SIZE"
         --ubatch-size "$LLM_UBATCH_SIZE"
-        --flash-attn on # currently flash-attn has issues on Intel GPUs (need to put to on for: smoll/llamainst)
+        --flash-attn off # currently flash-attn has issues on Intel GPUs (need to put to on for: smoll/llamainst)
         --parallel "$PARALLEL"
-        --cache-type-k q8_0
-        --cache-type-v q8_0
+        --cache-type-k f16 # if q*, needs flash-attn on 
+        --cache-type-v f16 # if q*, needs flash-attn on
         --verbose
+        --spec-type ngram-mod
+        --spec-ngram-size-n 24 
+        --draft-min 48
+        --draft-max 64
         
     )"
 }
