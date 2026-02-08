@@ -1,0 +1,1 @@
+Folder with logs of all the services

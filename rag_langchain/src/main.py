@@ -5,6 +5,7 @@ import datetime
 
 from langfuse import get_client
 from langfuse.langchain import CallbackHandler
+from langfuse.langchain.CallbackHandler import LangchainCallbackHandler
 
 from eval_ragas import eval_ragas_main
 from eval_mlflow import eval_mlflow_main
@@ -18,15 +19,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def main_rag(cfg):
+def main_rag(cfg: dict):
+    
     try:
-        _ = get_client()
-        langfuse_handler = CallbackHandler()
-    except Exception as e:
-        print(e)
-        logger.error("Failed to use Langfuse.")
-        langfuse_handler = None
+        langfuse = get_client()
+        if not langfuse.auth_check():
+            raise Exception
 
+        langfuse_handler: LangchainCallbackHandler = CallbackHandler()
+        logger.info("Langfuse OK")
+    except Exception as e:
+        logger.error(f"Failed to use Langfuse: {e}")
+        langfuse_handler = None
     rag = rag_system(cfg)
 
     print(f"\n--- RAG Pipeline Ready [{cfg['rag_mode']}] ---")
@@ -42,7 +46,7 @@ def main_rag(cfg):
             if not q:
                 continue
 
-            result = rag.answer(q, callbacks=[langfuse_handler])
+            result = rag.answer(query=q, callbacks=[langfuse_handler])
 
             print("\n" + "=" * 20 + " ANSWER " + "=" * 20)
             print(result["answer"])
@@ -67,28 +71,38 @@ def main_rag(cfg):
 
 if __name__ == "__main__":
     cfg, args = load_env_config(), parse_args()
-    cfg = {**cfg, **vars(args)}  # put evertyhing in one dict only
+    # put in on dict yaml config and parsed params
+    cfg = {**cfg, **vars(args)}  
 
+    # create experiment name for mlflow
     datatime_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     cfg["experiment"] = f"{cfg['task']}_{datatime_str}"
 
+    # NOTE: services can be started/stoppend singularly
+    # and stopped all together
+    srv = cfg["services"]
     with services_handler(
         cfg,
-        suppress_out=True,
-        stop_all=True,
-        stop_langfuse=False,
-        stop_mlflow=False,
-        stop_llama_server=False,
-        stop_pgvector=False
+        stop_all=srv["stop_all"],
+        stop_langfuse=srv["langfuse"]["stop"],
+        stop_mlflow=srv["mlflow"]["stop"],
+        stop_llama_server=srv["llamacpp"]["stop"],
+        stop_pgvector=srv["pgvector"]["stop"],
+        stop_redis=srv["redis"]["stop"],
+        stop_qdrant=srv["qdrant"]["stop"]
     ):
         if cfg["task"] == "rag":
             cfg["interactive"] = True
+            # TODO: make asyncronous as eval
             main_rag(cfg)
             sys.exit(0)
 
+        assert cfg["task"] in ["eval[ragas]", "eval[mlflow]"]
         if cfg["task"] == "eval[ragas]":
             res = asyncio.run(eval_ragas_main(cfg))
             res.save()
-        else:
+        elif cfg["task"] == "eval[mlflow]":
             res = eval_mlflow_main(cfg)
             print(res)
+        
+        sys.exit(0)

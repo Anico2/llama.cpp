@@ -1,10 +1,11 @@
 # PDF directories to load
-PDF_DIRS:
-  - ./documents/stellantis
-  #- ./documents/free
-  #- ./documents/purchased
-
-chunk_strategy: toc # recursive #qa # semantic or recursive or qa
+pdf:
+  paths:
+    - ./documents/stellantis
+  loader: pypdfium2 # or pdfplumber
+  read_mode:  single # page or single
+  delim: "\n----CUSTOM_END----\n" # for single whe should put something like "\n----CUSTOM_END----\n"
+  chunk_strategy: toc # recursive, qa, semantic, 
 
 # Text splitting
 text_splitter:
@@ -15,12 +16,18 @@ text_splitter:
     - "\n"
     - " "
     - "."
-
-# PGVector
+    
+# Vector Store Settings
 vectorstore:
+  type: qdrant  # Options: pgvector, qdrant
   collection_name: documents
   search_kwargs:
-    k: 2 # how many documents to retrieve
+    k: 2
+
+# Semantic Caching (Redis)
+semantic_caching:
+  enabled: True
+  threshold: 0.9
 
 # LLM defaults
 llm:
@@ -28,7 +35,7 @@ llm:
   temperature: 0
   chain_type: stuff
 embeddings:
-  model: all-MiniLM-L6-v2-ggml-model-f16 #snowflake-arctic-embed-m-v1.5 #nomic-embed-text-v1.5
+  model: all-MiniLM-L6-v2-ggml-model-f16
 
 # Ragas evaluation settings
 evaluation:
@@ -36,6 +43,27 @@ evaluation:
   judge_llm:
     model: Meta-Llama-3.1-8B-Instruct-Q5_K_M
 
-# litellm
-litellm:
-  enabled: False
+# Services control
+services:
+  llamacpp:
+    start: True
+    stop: False
+  pgvector:
+    start: True
+    stop: False
+  redis:
+    start: True
+    stop: False
+  qdrant:
+    start: True
+    stop: False
+  langfuse:
+    start: True
+    stop: False
+  mlflow:
+    start: True
+    stop: False
+  litellm:
+    start: False
+    stop: False
+  stop_all: False

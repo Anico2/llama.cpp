@@ -1,1 +1,1 @@
-Folder with Postgres data
+Folder with pgvector volumes

@@ -34,7 +34,10 @@ dependencies = [
     "mlflow>=3.0.0",
     "langchain-litellm>0.3",
     "langfuse>3.0.0",
-    "litellm[proxy]"
+    "litellm[proxy]",
+    "redis",
+    "langchain-redis",
+    "langchain-qdrant"
 ]
 
 [build-system]

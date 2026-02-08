@@ -9,11 +9,38 @@ services:
       POSTGRES_PASSWORD: ${PG_PASSWORD_}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "6025:5432"
+      - "${PG_PORT_}:5432"
     volumes:
       - ./pgvector_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $PG_USER_"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis_cache:
+    image: redis/redis-stack-server:latest
+    container_name: redis-rag-lc
+    ports:
+      - "${REDIS_PORT_CACHE}:6379"
+    volumes:
+      - ./redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant
+    container_name: qdrant-rag-lc
+    ports:
+      - "${QDRANT_PORT}:6333"
+      - 6334:6334
+    volumes:
+      - ./qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/localhost/6333'"]
       interval: 5s
       timeout: 5s
       retries: 5

@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.output_parsers import JsonOutputParser
+
+from utils import DecoderClient
 logger = logging.getLogger(__name__)
 
 class ChunkSchema(BaseModel):
@@ -16,7 +18,7 @@ class ChunksResponse(BaseModel):
     chunks: List[ChunkSchema]
 
 class LLMSemanticChunker:
-    def __init__(self, llm):
+    def __init__(self, llm: DecoderClient):
         self.llm_chain = llm.with_structured_output(ChunksResponse)
         # Despite doing semantic chunking, we first pre-split to manageable sizes
         self.pre_splitter = RecursiveCharacterTextSplitter(
@@ -87,7 +89,7 @@ class TocResponse(BaseModel):
     toc: List[TocEntry] = Field(description="List of table of contents entries")
 
 class TableOfContentsChunker:
-    def __init__(self, llm, delim: str | None = None, max_chunk_size: int = 4000):
+    def __init__(self, llm: DecoderClient, delim: str | None = None, max_chunk_size: int = 4000):
         self.parser = JsonOutputParser(pydantic_object=TocResponse)
         self.llm = llm
         self.delim = delim
@@ -226,7 +228,7 @@ class TableOfContentsChunker:
 
 class QAChunking():
 
-    def __init__(self,llm):
+    def __init__(self,llm: DecoderClient):
         self.llm_chain = llm.with_structured_output(ChunksResponse)
 
     def split_documents(self, documents: List[Document]) -> List[Document]:

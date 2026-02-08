@@ -6,6 +6,12 @@ uv.lock
 pgvector_data/*
 !pgvector_data/README.md
 
+qdrant_data/*
+!qdrant_data/README.md
+
+redis_data/*
+!redis_data/README.md
+
 documents/purchased/*
 !documents/purchased/README.md
 
