@@ -11,7 +11,7 @@ from chb.evals.eval_ragas import eval_ragas_main
 from chb.evals.eval_mlflow import eval_mlflow_main
 from chb.engine.rag import rag_system
 from chb.services.services import services_handler
-from chb.utils.params import load_env_config, parse_args
+from chb.utils.params import get_application_config
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -70,16 +70,10 @@ def main_rag(cfg: dict):
 
 
 if __name__ == "__main__":
-    cfg, args = load_env_config(), parse_args()
-    # put in on dict yaml config and parsed params
-    cfg = {**cfg, **vars(args)}  
 
-    # create experiment name for mlflow
-    datatime_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    cfg["experiment"] = f"{cfg['task']}_{datatime_str}"
-
-    # NOTE: services can be started/stoppend singularly
-    # and stopped all together
+    cfg = get_application_config(parse_cli_args=True) 
+    breakpoint()
+    # NOTE: services can be started/stoppend singularly and stopped all together
     srv = cfg["services"]
     with services_handler(
         cfg,

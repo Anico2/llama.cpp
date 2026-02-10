@@ -3,6 +3,7 @@ import yaml
 from dotenv import load_dotenv
 from pathlib import Path
 import argparse
+import datetime
 
 from langchain_postgres import PGVector
 from langchain_core.vectorstores import InMemoryVectorStore
@@ -32,7 +33,7 @@ def load_env_config() -> dict:
     return cfg
 
 
-def parse_args() -> dict:
+def parse_args_fn() -> dict:
     """Parser
 
     Returns:
@@ -73,3 +74,37 @@ def parse_args() -> dict:
     return parser.parse_args()
 
 
+def get_application_config(parse_cli_args: bool = True, overrides: dict = None) -> dict:
+    """
+    Centralizes configuration setup.
+    
+    Args:
+        parse_cli_args (bool): If True, parses sys.argv (used in main.py). 
+                               If False, uses defaults (used in MCP/Streamlit).
+        overrides (dict): Manual dictionary to override config (e.g. for MCP).
+    """
+    cfg = load_env_config()
+    
+
+    if parse_cli_args:
+        args = parse_args_fn()
+        cfg.update(vars(args))
+    else:
+        # Default values
+        defaults = {
+            "task": "rag",
+            "ingest": False,
+            "rag_mode": "auto",
+            "no_cache": False,
+            "interactive": False
+        }
+        cfg.update(defaults)
+
+    if overrides:
+        cfg.update(overrides)
+
+    # mlflow experiment
+    datatime_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    cfg["experiment"] = f"{cfg.get('task', 'rag')}_{datatime_str}"
+    
+    return cfg

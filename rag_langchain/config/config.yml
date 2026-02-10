@@ -19,7 +19,7 @@ text_splitter:
     
 # Vector Store Settings
 vectorstore:
-  type: qdrant  # Options: pgvector, qdrant
+  type: pgvector  # Options: pgvector, qdrant
   collection_name: documents
   search_kwargs:
     k: 2

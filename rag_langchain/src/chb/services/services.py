@@ -196,9 +196,59 @@ def _ensure_llamacpp() -> None:
     raise RuntimeError("LlamaCpp failed to start.")
 
 
-@contextmanager
-def services_handler(
-    cfg: dict,
+def start_services(cfg: dict):
+    log_fld = Path(os.environ["PROJECT_ROOT"]) / "logs"
+    log_fld.mkdir(parents=True, exist_ok=True)
+
+    f_pg = open(log_fld / "pgvector.log", "w")
+    f_redis = open(log_fld / "redis.log", "w")
+    f_qdrant = open(log_fld / "qdrant.log", "w")
+    f_lf = open(log_fld / "langfuse.log", "w")
+    f_ml = open(log_fld / "mlflow.log", "w")
+
+    logs = [f_pg, f_redis, f_qdrant, f_lf, f_ml]
+    langfuse_wd_path = None
+
+    srv = cfg.get("services", {})
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {}
+
+        if srv.get("langfuse", {}).get("start"):
+            futures[executor.submit(_ensure_langfuse, f_lf)] = "Langfuse"
+
+        if srv.get("llamacpp", {}).get("start"):
+            futures[executor.submit(_ensure_llamacpp)] = "LlamaCpp"
+
+        if srv.get("mlflow", {}).get("start"):
+            futures[executor.submit(_ensure_mlflow, cfg, f_ml)] = "MLflow"
+
+        if srv.get("qdrant", {}).get("start"):
+            futures[executor.submit(_ensure_qdrant, f_qdrant)] = "Qdrant"
+
+        if srv.get("pgvector", {}).get("start"):
+            futures[executor.submit(_ensure_pgvector, f_pg)] = "PGVector"
+
+        if srv.get("redis", {}).get("start"):
+            futures[executor.submit(_ensure_redis, f_redis)] = "Redis"
+
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                result = future.result()
+                if name == "Langfuse":
+                    langfuse_wd_path = result
+            except Exception as e:
+                logger.error(f"Service {name} failed to start: {e}")
+
+    return {
+        "logs": logs,
+        "langfuse_wd_path": langfuse_wd_path,
+    }
+
+def stop_services(
+    state: dict,
+    *,
     stop_all: bool = False,
     stop_langfuse: bool = False,
     stop_mlflow: bool = False,
@@ -207,119 +257,46 @@ def services_handler(
     stop_redis: bool = False,
     stop_qdrant: bool = False,
 ):
-    log_fld = Path(os.environ["PROJECT_ROOT"]) / "logs"
-    os.makedirs(log_fld, exist_ok=True)
-    f_pg = open(log_fld / "pgvector.log", "w")
-    f_redis = open(log_fld / "redis.log", "w")
-    f_qdrant = open(log_fld / "qdrant.log", "w")
-    f_lf = open(log_fld / "langfuse.log", "w")
-    f_ml = open(log_fld / "mlflow.log", "w")
-    logs = [f_pg, f_redis, f_qdrant, f_lf, f_ml]
-    langfuse_wd_path = None
+    redirect = subprocess.DEVNULL
 
-    # Check what needs to be started based on config
-    srv = cfg.get("services", {})
-    start_pg = srv.get("pgvector", {}).get("start", False)
-    start_redis = srv.get("redis", {}).get("start", False)
-    start_qdrant = srv.get("qdrant", {}).get("start", False)
-    start_llama = srv.get("llamacpp", {}).get("start", False)
-    start_mlflow = srv.get("mlflow", {}).get("start", False)
-    start_langfuse = srv.get("langfuse", {}).get("start", False)
+    def safe_run(cmd, *, cwd=None, name="service"):
+        try:
+            subprocess.run(cmd, stdout=redirect, stderr=redirect, cwd=cwd)
+            logger.info(f"Stopped {name}.")
+        except Exception as e:
+            logger.error(f"Failed to stop {name}: {e}")
 
+    if stop_llama_server or stop_all:
+        safe_run(["pkill", "-f", "llama-server"], name="llama-server")
+
+    if stop_mlflow or stop_all:
+        safe_run(["pkill", "-f", "mlflow"], name="mlflow")
+
+    if stop_pgvector or stop_all:
+        safe_run(["docker", "compose", "stop", "pgvector"], name="PGVector")
+
+    if stop_redis or stop_all:
+        safe_run(["docker", "compose", "stop", "redis_cache"], name="Redis")
+
+    if stop_qdrant or stop_all:
+        safe_run(["docker", "compose", "stop", "qdrant"], name="Qdrant")
+
+    if stop_langfuse or stop_all:
+        if state.get("langfuse_wd_path"):
+            safe_run(
+                ["docker", "compose", "-f", "docker-compose.yml", "down"],
+                cwd=state["langfuse_wd_path"],
+                name="Langfuse",
+            )
+
+    for f in state.get("logs", []):
+        f.close()
+
+
+@contextmanager
+def services_handler(cfg: dict, **stop_flags):
+    state = start_services(cfg)
     try:
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = {}
-
-            if start_langfuse:
-                futures[executor.submit(_ensure_langfuse, f_lf)] = "Langfuse"
-
-            if start_llama:
-                futures[executor.submit(_ensure_llamacpp)] = "LlamaCpp"
-
-            if start_mlflow:
-                futures[executor.submit(_ensure_mlflow, cfg, f_ml)] = "MLflow"
-
-            if start_qdrant:
-                futures[executor.submit(_ensure_qdrant, f_qdrant)] = "Qdrant"
-
-            if start_pg:
-                futures[executor.submit(_ensure_pgvector, f_pg)] = "PGVector"
-
-            if start_redis:
-                futures[executor.submit(_ensure_redis, f_redis)] = "Redis"
-
-            for future in as_completed(futures):
-                service_name = futures[future]
-                try:
-                    result = future.result()
-                    if service_name == "Langfuse":
-                        langfuse_wd_path = result
-                except Exception as e:
-                    logger.error(f"Service {service_name} failed to start: {e}")
-
-        yield
-
+        yield state
     finally:
-        redirect = subprocess.DEVNULL
-
-        if stop_llama_server or stop_all:
-            try:
-                subprocess.run("pkill -f llama-server", shell=True, stdout=redirect)
-                logger.info("Stopped llama-server.")
-            except Exception as e:
-                logger.error(f"Failed to stop llama-server: {e}")
-
-        if stop_mlflow or stop_all:
-            try:
-                subprocess.run("pkill -f mlflow", shell=True, stdout=redirect)
-                logger.info("Stopped py-spawned services.")
-            except Exception as e:
-                logger.error(f"Failed to stop mlflow: {e}")
-
-        if stop_pgvector or stop_all:
-            try:
-                subprocess.run(
-                    ["docker", "compose", "stop", "pgvector"],
-                    stdout=redirect,
-                    stderr=redirect,
-                )
-                logger.info("Stopped PGVector.")
-            except Exception as e:
-                logger.error(f"Failed to stop PGVector: {e}")
-
-        if stop_redis or stop_all:
-            try:
-                subprocess.run(
-                    ["docker", "compose", "stop", "redis_cache"],
-                    stdout=redirect,
-                    stderr=redirect,
-                )
-                logger.info("Stopped Redis.")
-            except Exception as e:
-                logger.error(f"Failed to stop Redis: {e}")
-
-        if stop_qdrant or stop_all:
-            try:
-                subprocess.run(
-                    ["docker", "compose", "stop", "qdrant"],
-                    stdout=redirect,
-                    stderr=redirect,
-                )
-                logger.info("Stopped Qdrant.")
-            except Exception as e:
-                logger.error(f"Failed to stop Qdrant: {e}")
-
-        if stop_langfuse or stop_all:
-            try:
-                if langfuse_wd_path:
-                    subprocess.run(
-                        ["docker", "compose", "-f", "docker-compose.yml", "down"],
-                        stdout=redirect,
-                        stderr=redirect,
-                        cwd=langfuse_wd_path,
-                    )
-                    logger.info("Stopped Langfuse.")
-            except Exception as e:
-                logger.error(f"Failed to stop Langfuse: {e}")
-
-        _ = [ff.close() for ff in logs]
+        stop_services(state, **stop_flags)

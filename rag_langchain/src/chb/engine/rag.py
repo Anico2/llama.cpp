@@ -3,7 +3,6 @@ from pathlib import Path
 
 from langchain_community.document_loaders import PyPDFium2Loader, PDFPlumberLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_core.documents.base import Document as LCDocument
 
@@ -17,6 +16,7 @@ from chb.engine.strategies import (
     LangGraphStrategy,
     CachedRAGStrategy,
 )
+from chb.engine.prompt_templates import prompt_template
 from chb.ingestion.chunking import LLMSemanticChunker, QAChunking, TableOfContentsChunker
 from chb.utils.clients import (
     get_model_classes,
@@ -142,23 +142,6 @@ def rag_ingest(cfg: dict, llm: DecoderClient, vectorstore: VectorStoreClient) ->
         logger.error(f"Ingestion failed: {e}")
 
 
-def prompt_template() -> ChatPromptTemplate:
-    """Function for applying template. This should also work as a system message.
-
-    Returns: ChatPromptTemplate
-    """
-    return ChatPromptTemplate.from_template(
-        """Answer the question based on the context provided.
-        If the context is irrelevant or empty, answer based on your own knowledge 
-        but mention that the provided context was insufficient.
-
-        Context: {context}
-        \n\n\n
-        Question: "{question}"
-        """
-    )
-
-
 def get_strategy_instances(
     cfg: dict,
     llm: DecoderClient,
@@ -188,7 +171,7 @@ def get_strategy_instances(
         selected_strategy = LangGraphStrategy(retriever=retriever, llm=llm)
 
     else:
-        common = {"retriever": retriever, "llm": llm, "prompt": prompt_template()}
+        common = {"retriever": retriever, "llm": llm, "prompt": prompt_template(cfg["task"])}
         strategy_instances = {
             "simple": SimpleRAGStrategy(**common),
             "rrr": RRRStrategy(**common, cache=not cfg["no_cache"]),
