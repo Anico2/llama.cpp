@@ -13,11 +13,12 @@ from langfuse.langchain.CallbackHandler import LangchainCallbackHandler
 import redis
 from pydantic import BaseModel, Field
 
-from utils import log_execution, EncoderClient, DecoderClient
+from chb.utils.clients import EncoderClient, DecoderClient
+from chb.utils.logs import log_execution
 
 logger = logging.getLogger(__name__)
 try:
-    from rag_graph import build_rag_graph
+    from chb.engine.rag_graph import build_rag_graph
 
     LANGGRAPH_AVAILABLE = True
 except ImportError:

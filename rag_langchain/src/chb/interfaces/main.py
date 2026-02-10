@@ -7,11 +7,11 @@ from langfuse import get_client
 from langfuse.langchain import CallbackHandler
 from langfuse.langchain.CallbackHandler import LangchainCallbackHandler
 
-from eval_ragas import eval_ragas_main
-from eval_mlflow import eval_mlflow_main
-from rag import rag_system
-from services import services_handler
-from utils import load_env_config, parse_args
+from chb.evals.eval_ragas import eval_ragas_main
+from chb.evals.eval_mlflow import eval_mlflow_main
+from chb.engine.rag import rag_system
+from chb.services.services import services_handler
+from chb.utils.params import load_env_config, parse_args
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

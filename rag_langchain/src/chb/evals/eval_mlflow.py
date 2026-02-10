@@ -4,7 +4,7 @@ from typing import Literal
 
 import mlflow
 
-from rag import rag_system
+from chb.engine.rag import rag_system
 
 logger = logging.getLogger(__name__)
 

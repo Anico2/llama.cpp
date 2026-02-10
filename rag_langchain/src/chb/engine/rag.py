@@ -7,7 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_core.documents.base import Document as LCDocument
 
-from strategies import (
+from chb.engine.strategies import (
     RAGStrategy,
     SimpleRAGStrategy,
     RRRStrategy,
@@ -17,8 +17,8 @@ from strategies import (
     LangGraphStrategy,
     CachedRAGStrategy,
 )
-from chunking import LLMSemanticChunker, QAChunking, TableOfContentsChunker
-from utils import (
+from chb.ingestion.chunking import LLMSemanticChunker, QAChunking, TableOfContentsChunker
+from chb.utils.clients import (
     get_model_classes,
     get_vectorstore,
     VectorStoreClient,

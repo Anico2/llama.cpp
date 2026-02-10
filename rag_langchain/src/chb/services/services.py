@@ -7,6 +7,7 @@ import subprocess
 import mlflow
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -206,12 +207,13 @@ def services_handler(
     stop_redis: bool = False,
     stop_qdrant: bool = False,
 ):
-    os.makedirs("logs", exist_ok=True)
-    f_pg = open("logs/pgvector.log", "w")
-    f_redis = open("logs/redis.log", "w")
-    f_qdrant = open("logs/qdrant.log", "w")
-    f_lf = open("logs/langfuse.log", "w")
-    f_ml = open("logs/mlflow.log", "w")
+    log_fld = Path(os.environ["PROJECT_ROOT"]) / "logs"
+    os.makedirs(log_fld, exist_ok=True)
+    f_pg = open(log_fld / "pgvector.log", "w")
+    f_redis = open(log_fld / "redis.log", "w")
+    f_qdrant = open(log_fld / "qdrant.log", "w")
+    f_lf = open(log_fld / "langfuse.log", "w")
+    f_ml = open(log_fld / "mlflow.log", "w")
     logs = [f_pg, f_redis, f_qdrant, f_lf, f_ml]
     langfuse_wd_path = None
 

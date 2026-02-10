@@ -1,10 +1,12 @@
 import logging
 import time
+
 from ragas import experiment, Dataset
 from ragas.metrics.collections import AnswerRelevancy, ContextPrecision
 from pydantic import BaseModel
-from rag import rag_system
-from utils import get_eval_model_classes
+
+from chb.engine.rag import rag_system
+from chb.utils.clients import get_eval_model_classes
 
 # Initialize models
 llm, embeddings = get_eval_model_classes(async_mode=True)
