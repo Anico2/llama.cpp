@@ -5,6 +5,9 @@ from langchain_community.document_loaders import PyPDFium2Loader, PDFPlumberLoad
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_core.documents.base import Document as LCDocument
+from langfuse.langchain.CallbackHandler import LangchainCallbackHandler
+import mlflow
+from mlflow.entities import SpanType
 
 from chb.engine.strategies import (
     RAGStrategy,
@@ -17,7 +20,11 @@ from chb.engine.strategies import (
     CachedRAGStrategy,
 )
 from chb.engine.prompt_templates import prompt_template
-from chb.ingestion.chunking import LLMSemanticChunker, QAChunking, TableOfContentsChunker
+from chb.ingestion.chunking import (
+    LLMSemanticChunker,
+    QAChunking,
+    TableOfContentsChunker,
+)
 from chb.utils.clients import (
     get_model_classes,
     get_vectorstore,
@@ -31,12 +38,15 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).parent.parent
 
 
-def load_split_documents(cfg: dict, llm: DecoderClient) -> tuple[list[LCDocument], list[LCDocument]]:
+def load_split_documents(
+    cfg: dict, llm: DecoderClient, callbacks: LangchainCallbackHandler | None = None
+) -> tuple[list[LCDocument], list[LCDocument]]:
     """Load and split documents. Currently only pdf are supported
 
     Args:
         cfg (dict): dictionary with config
         llm (DecoderClient): llm client
+        callbacks (LangchainCallbackHandler | None): Langfuse callback (e.g. Langufuse traces)
 
     Returns:
         tuple[list[LCDocument], list[LCDocument]]: list with raw docs, list with splitted docs
@@ -69,10 +79,10 @@ def load_split_documents(cfg: dict, llm: DecoderClient) -> tuple[list[LCDocument
 
     if chunk_strategy == "semantic":
         logger.info("Using LLM-Native Semantic Chunking (slower)")
-        splitter = LLMSemanticChunker(llm=llm)
+        splitter = LLMSemanticChunker(llm=llm, callbacks=callbacks)
     elif chunk_strategy == "toc":
         logger.info("Using Table of Contents Chunking")
-        splitter = TableOfContentsChunker(llm=llm, delim=delim)
+        splitter = TableOfContentsChunker(llm=llm, delim=delim, callbacks=callbacks)
     elif chunk_strategy == "qa":
         splitter = QAChunking(llm=llm)
     else:
@@ -119,20 +129,25 @@ def pdf_loader(
     return raw_docs_
 
 
-def rag_ingest(cfg: dict, llm: DecoderClient, vectorstore: VectorStoreClient) -> None:
+def rag_ingest(
+    cfg: dict,
+    llm: DecoderClient,
+    vectorstore: VectorStoreClient,
+    callbacks: LangchainCallbackHandler | None = None,
+) -> None:
     """Ingestion entry point
 
     Args:
         cfg (dict): dictionary with config
         llm (DecoderClient): decoder client
         vectorstore (VectorStoreClient): vector store client
+        callbacks (LangchainCallbackHandler | None): Langfuse callback (e.g. Langufuse traces)
 
     Returns: None
     """
     logger.info("Starting ingestion")
-    raw_docs, docs = load_split_documents(cfg=cfg, llm=llm)
+    raw_docs, docs = load_split_documents(cfg=cfg, llm=llm, callbacks=callbacks)
     logger.info(f"Loaded {len(raw_docs)} docs → {len(docs)} chunks")
-    breakpoint()
     # If using Qdrant, we might want to force recreation if strictly ingesting fresh
     # But standard add_documents works if the store is already initialized in get_vectorstore
     try:
@@ -141,6 +156,9 @@ def rag_ingest(cfg: dict, llm: DecoderClient, vectorstore: VectorStoreClient) ->
     except Exception as e:
         logger.error(f"Ingestion failed: {e}")
 
+@mlflow.trace(span_type=SpanType.RETRIEVER)
+def get_retriever(vectorstore: VectorStoreClient, k: int) -> VectorStoreRetriever:
+    return vectorstore.as_retriever(search_kwargs={"k": k})
 
 def get_strategy_instances(
     cfg: dict,
@@ -162,7 +180,7 @@ def get_strategy_instances(
 
     k = cfg["vectorstore"]["search_kwargs"]["k"]
     logger.info(f"Using top-{k} documents for retrieval.")
-    retriever: VectorStoreRetriever = vectorstore.as_retriever(search_kwargs={"k": k})
+    retriever: VectorStoreRetriever = get_retriever(vectorstore, k=k)
 
     logger.info(f"RAG Mode: {cfg['rag_mode'].upper()}")
 
@@ -171,7 +189,11 @@ def get_strategy_instances(
         selected_strategy = LangGraphStrategy(retriever=retriever, llm=llm)
 
     else:
-        common = {"retriever": retriever, "llm": llm, "prompt": prompt_template(cfg["task"])}
+        common = {
+            "retriever": retriever,
+            "llm": llm,
+            "prompt": prompt_template(cfg["task"]),
+        }
         strategy_instances = {
             "simple": SimpleRAGStrategy(**common),
             "rrr": RRRStrategy(**common, cache=not cfg["no_cache"]),
@@ -197,14 +219,17 @@ def get_strategy_instances(
     return selected_strategy
 
 
-def rag_system(cfg: dict) -> RAGStrategy:
+def rag_system(
+    cfg: dict, callbacks: LangchainCallbackHandler | None = None
+) -> RAGStrategy:
     """Entry point of the whole rag system
 
     Args:
         cfg (dict): dictionary with config
+        callbacks (LangchainCallbackHandler | None): Langfuse callback (e.g. Langufuse traces)
 
     Returns:
-        RAGStrategy: instance of the chose strategy
+        RAGStrategy: instance of the chosen strategy
     """
     # retrieve encoder and decoder
     clients = get_model_classes(cfg)
@@ -217,7 +242,7 @@ def rag_system(cfg: dict) -> RAGStrategy:
 
     if cfg["ingest"]:
         # It means that we have either create or update the documents collection
-        rag_ingest(cfg=cfg, llm=llm, vectorstore=vectorstore)
+        rag_ingest(cfg=cfg, llm=llm, vectorstore=vectorstore, callbacks=callbacks)
 
     return get_strategy_instances(
         cfg=cfg, llm=llm, embeddings=embeddings, vectorstore=vectorstore

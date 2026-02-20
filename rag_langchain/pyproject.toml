@@ -3,7 +3,7 @@ name = "langchain_prj"
 version = "0.1.0"
 license = { text = "MIT" }
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = "==3.11.14"
 # need to copy and paste requirements because uv sync does not support dynamic metadata
 dependencies = [
     "requests",
@@ -31,7 +31,7 @@ dependencies = [
     "rapidfuzz>=3.14.0",
     "pdfplumber>=0.9.0",
     "langchain-milvus>0.0.8",
-    "mlflow>=3.0.0",
+    "mlflow[genai]>=3.0.0",
     "langchain-litellm",
     "langfuse>3.0.0",
     #"litellm[proxy]",

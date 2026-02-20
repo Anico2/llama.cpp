@@ -125,6 +125,7 @@ def _ensure_mlflow(cfg: dict, log_file: str) -> None:
     port = os.environ["MLFLOW_PORT"]
 
     if _is_server_running(host, int(port)):
+        mlflow.openai.autolog()
         logger.info(f"Mlflow running at {host}:{port}")
         return
 
@@ -152,7 +153,8 @@ def _ensure_mlflow(cfg: dict, log_file: str) -> None:
     for _ in range(60):
         if _is_server_running(host, port):
             mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
-            mlflow.set_experiment(cfg["experiment"])
+            mlflow.set_experiment(cfg["mlflow_experiment"])
+            mlflow.openai.autolog()
             logger.info("Mlflow started.")
             return
         time.sleep(1)

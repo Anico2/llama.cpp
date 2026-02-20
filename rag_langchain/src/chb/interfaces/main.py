@@ -20,23 +20,26 @@ logger = logging.getLogger(__name__)
 
 
 def main_rag(cfg: dict):
-    
+
     try:
         langfuse = get_client()
         if not langfuse.auth_check():
             raise Exception
 
         langfuse_handler: LangchainCallbackHandler = CallbackHandler()
+        langfuse_handler = [langfuse_handler]
         logger.info("Langfuse OK")
     except Exception as e:
         logger.error(f"Failed to use Langfuse: {e}")
         langfuse_handler = None
-    rag = rag_system(cfg)
+
+    # Initialize the system (optinally doing ingestion)
+    rag = rag_system(cfg, callbacks=langfuse_handler)
 
     print(f"\n--- RAG Pipeline Ready [{cfg['rag_mode']}] ---")
 
     if not cfg["interactive"]:
-        return rag.answer(cfg["query"], callbacks=[langfuse_handler])
+        return rag.answer(cfg["query"], callbacks=langfuse_handler)
 
     while True:
         try:
@@ -46,7 +49,7 @@ def main_rag(cfg: dict):
             if not q:
                 continue
 
-            result = rag.answer(query=q, callbacks=[langfuse_handler])
+            result = rag.answer(query=q, callbacks=langfuse_handler)
 
             print("\n" + "=" * 20 + " ANSWER " + "=" * 20)
             print(result["answer"])
@@ -70,9 +73,7 @@ def main_rag(cfg: dict):
 
 
 if __name__ == "__main__":
-
-    cfg = get_application_config(parse_cli_args=True) 
-    breakpoint()
+    cfg = get_application_config(parse_cli_args=True)
     # NOTE: services can be started/stoppend singularly and stopped all together
     srv = cfg["services"]
     with services_handler(
@@ -83,7 +84,7 @@ if __name__ == "__main__":
         stop_llama_server=srv["llamacpp"]["stop"],
         stop_pgvector=srv["pgvector"]["stop"],
         stop_redis=srv["redis"]["stop"],
-        stop_qdrant=srv["qdrant"]["stop"]
+        stop_qdrant=srv["qdrant"]["stop"],
     ):
         if cfg["task"] == "rag":
             cfg["interactive"] = True
@@ -98,5 +99,5 @@ if __name__ == "__main__":
         elif cfg["task"] == "eval[mlflow]":
             res = eval_mlflow_main(cfg)
             print(res)
-        
+
         sys.exit(0)

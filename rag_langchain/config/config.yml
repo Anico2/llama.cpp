@@ -63,6 +63,7 @@ services:
   mlflow:
     start: True
     stop: False
+    experiment_name: "rag_mlflow_with_dataset2"
   litellm:
     start: False
     stop: False

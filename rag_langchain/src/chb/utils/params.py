@@ -105,6 +105,10 @@ def get_application_config(parse_cli_args: bool = True, overrides: dict = None) 
 
     # mlflow experiment
     datatime_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    cfg["experiment"] = f"{cfg.get('task', 'rag')}_{datatime_str}"
+    experiment = cfg["services"]["mlflow"]["experiment_name"]
+    if experiment == "":
+        cfg["mlflow_experiment"] = f"{cfg['task']}_{datatime_str}"
+    else:
+        cfg["mlflow_experiment"] = f"{experiment}"
     
     return cfg

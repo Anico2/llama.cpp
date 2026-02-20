@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.output_parsers import JsonOutputParser
+from langfuse.langchain.CallbackHandler import LangchainCallbackHandler
 
 from chb.utils.clients import DecoderClient
 
@@ -22,12 +23,14 @@ class ChunksResponse(BaseModel):
 
 
 class LLMSemanticChunker:
-    def __init__(self, llm: DecoderClient):
+    def __init__(self, llm: DecoderClient, callbacks: LangchainCallbackHandler | None = None):
         """_summary_
 
         Args:
             llm (DecoderClient): _description_
+            callbacks (LangchainCallbackHandler | None): Langfuse callback (e.g. Langufuse traces)
         """
+        self.callbacks = callbacks
         self.llm_chain = llm.with_structured_output(ChunksResponse)
         # Despite doing semantic chunking, we first pre-split to manageable sizes
         self.pre_splitter = RecursiveCharacterTextSplitter(
@@ -58,7 +61,7 @@ class LLMSemanticChunker:
                 {doc.page_content}
                 """
 
-                response = self.llm_chain.invoke(prompt)
+                response = self.llm_chain.invoke(prompt, config={"callbacks": self.callbacks})
 
                 # If LLM fails or returns empty, we safely fallback to original
                 if not response or not response.chunks:
@@ -104,7 +107,7 @@ class TocResponse(BaseModel):
 
 class TableOfContentsChunker:
     def __init__(
-        self, llm: DecoderClient, delim: str | None = None, max_chunk_size: int = 4000
+        self, llm: DecoderClient, delim: str | None = None, max_chunk_size: int = 4000, callbacks: LangchainCallbackHandler | None = None
     ):
         """_summary_
 
@@ -112,11 +115,13 @@ class TableOfContentsChunker:
             llm (DecoderClient): _description_
             delim (str | None, optional): _description_. Defaults to None.
             max_chunk_size (int, optional): _description_. Defaults to 4000.
+            callbacks (LangchainCallbackHandler | None): Langfuse callback (e.g. Langufuse traces)
         """
         self.parser = JsonOutputParser(pydantic_object=TocResponse)
         self.llm = llm
         self.delim = delim
         self.max_chunk_size = max_chunk_size
+        self.callbacks = callbacks
 
         self.recursive_splitter = RecursiveCharacterTextSplitter(
             chunk_size=max_chunk_size,
@@ -200,7 +205,7 @@ class TableOfContentsChunker:
             """
 
         print("Extracting TOC")
-        response_msg = self.llm.invoke(prompt)
+        response_msg = self.llm.invoke(prompt, config={"callbacks": self.callbacks})
         response_str = response_msg.content
 
         try:
