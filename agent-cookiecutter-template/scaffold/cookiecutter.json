@@ -1,0 +1,7 @@
+{
+  "project_name": "XYZ",
+  "project_slug": "{{ cookiecutter.project_name.lower().replace(' ', '-') }}",
+  "package_name": "{{ cookiecutter.project_name.lower().replace(' ', '_') }}",
+  "python_version": "3.11.14",
+  "description": "A modular multi-agent system using ADK, MLflow, and local models"
+}

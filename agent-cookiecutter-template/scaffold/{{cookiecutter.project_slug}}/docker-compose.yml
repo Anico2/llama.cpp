@@ -1,0 +1,20 @@
+services:
+  agent-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_BASE=http://llama-cpp:8080/v1
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    depends_on:
+      - llama-cpp
+
+  llama-cpp:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    ports:
+      - "8080:8080"
+    # Add your specific local model mounting commands here
+    command: ["-m", "/models/your-model.gguf", "--host", "0.0.0.0", "--port", "8080"]
+    volumes:
+      - ./data/models:/models
+

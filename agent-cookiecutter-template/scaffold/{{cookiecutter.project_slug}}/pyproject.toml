@@ -1,0 +1,20 @@
+[project]
+name = "{{ cookiecutter.project_slug }}" 
+# NOTE: the project slug is the python package name 
+# that will be used when you want to install your package 
+# elsewere using pip install your_package_name.
+version = "0.1.0"
+description = "A modular multi-agent system using ADK, MLflow, and local llama.cpp"
+readme = "README.md"
+requires-python = "==3.11.14"
+dependencies = [
+    "cookiecutter",
+    "google-adk",
+    "mlflow",
+    "openai"
+
+]
+
+[build-system]
+requires = ["uv_build >= 0.9.21, <0.10.0"]
+build-backend = "uv_build"
